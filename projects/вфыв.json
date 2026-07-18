@@ -1,0 +1,14 @@
+{
+  "name": "фавыва",
+  "image_paths": [
+    "C:/Users/deadl/OneDrive/Рабочий стол/unnamed.jpg"
+  ],
+  "rooms": [],
+  "zones": [],
+  "employees_count": 5,
+  "hourly_rate": 1200.0,
+  "total_area_m2": 158.0,
+  "calibration_line": null,
+  "created_date": "2026-06-28T10:12:39.113907",
+  "last_modified": "2026-06-28T10:14:59.222679"
+}
