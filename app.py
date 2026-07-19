@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (
     QGraphicsTextItem, QGraphicsItem, QToolBar, QInputDialog, QFormLayout,
     QSpinBox, QLineEdit, QTableWidget, QTableWidgetItem, QTextEdit,
     QDoubleSpinBox, QDialog, QDialogButtonBox, QSlider, QComboBox,
-    QToolTip, QHeaderView, QAbstractItemView, QGraphicsRectItem
+    QToolTip, QHeaderView, QAbstractItemView, QGraphicsRectItem,
+    QProgressBar
 )
 from PySide6.QtCore import Qt, Signal, QPointF, QRectF, QLineF
 from PySide6.QtGui import (
@@ -28,7 +29,7 @@ from report_generator import generate_report
 from sanitarnorm import COMPLEXITY_FACTOR, DEFAULT_FREQUENCY_PER_DAY
 from scheduler import plan_cleaning_schedule
 from calendar_export import export_tasks_csv, export_tasks_excel
-from dxf_analyzer import analyze_dxf
+from dxf_importer import import_dxf
 from tools import PlanView, WallSegmentItem, WallVertexItem, UndoStack
 
 PROJECTS_DIR = "projects"
@@ -65,10 +66,9 @@ class MainWindow(QMainWindow):
         self.norms_screen = QWidget(); self.setup_norms_screen(); self.stack.addWidget(self.norms_screen)
         self.stack.setCurrentIndex(0)
 
-        # Переменные для временного хранения загруженного DXF до разметки этажей
-        self.temp_dxf_path = None
-        self.temp_dxf_segments = []  # список LineString
-        self.floor_rects = []        # список (x,y,w,h)
+        self.temp_dxf_walls = []
+        self.floor_rects = []
+        self.is_large_project = False
 
     # ---------- Стартовый экран ----------
     def setup_start_screen(self):
@@ -209,95 +209,64 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Загрузить DXF", "", "DXF Files (*.dxf)")
         if not path: return
 
-        # 1. Читаем DXF и собираем все линии во временный список
-        try:
-            doc = ezdxf.readfile(path)
-            msp = doc.modelspace()
-            scale = self._get_dxf_scale(doc)
-            segments = []
-            for entity in msp:
-                segs = self._extract_lines(entity, scale)
-                segments.extend(segs)
-            if not segments:
-                QMessageBox.warning(self, "Ошибка", "В файле не найдено ни одной линии.")
-                return
-        except Exception as e:
-            QMessageBox.warning(self, "Ошибка", f"Не удалось прочитать DXF: {e}")
+        progress_dlg = QDialog(self)
+        progress_dlg.setWindowTitle("Загрузка DXF")
+        progress_dlg.setFixedSize(300, 100)
+        layout = QVBoxLayout(progress_dlg)
+        label = QLabel("Чтение файла...")
+        layout.addWidget(label)
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
+        layout.addWidget(progress_bar)
+        progress_dlg.show()
+
+        def update_progress(pct, msg):
+            progress_bar.setValue(pct)
+            label.setText(msg)
+            QApplication.processEvents()
+
+        data = import_dxf(path, progress_callback=update_progress)
+        progress_dlg.close()
+
+        if not data['walls']:
+            QMessageBox.warning(self, "Ошибка",
+                "Не удалось извлечь стены из DXF.\n\n"
+                "Возможные причины:\n"
+                "- стены не найдены (проверьте через Инспектор DXF)\n"
+                "- масштаб чертежа не в миллиметрах\n\n"
+                "Вы можете загрузить план как изображение и обвести стены вручную.")
             return
 
-        # 2. Сохраняем временные данные
-        self.temp_dxf_path = path
-        self.temp_dxf_segments = segments
+        self.temp_dxf_walls = data['walls']
         self.floor_rects = []
 
-        # 3. Отображаем все линии на сцене (серым цветом)
-        self.show_temp_dxf_lines()
+        self.show_temp_dxf_walls()
 
-        # 4. Переключаем инструмент на выделение этажей
         self.plan_view.set_tool(6)  # SelectFloor
         self.btn_finish_floors.setVisible(True)
         QMessageBox.information(self, "Разметка этажей",
             "Выделите прямоугольные области для каждого этажа. Нажмите 'Завершить разметку', когда закончите.")
 
-    def _get_dxf_scale(self, doc):
-        insunits = doc.header.get("$INSUNITS", 0)
-        if insunits == 4: return 0.001
-        elif insunits == 5: return 0.01
-        elif insunits == 6: return 1.0
-        elif insunits == 1: return 0.0254
-        return 0.001
-
-    def _extract_lines(self, entity, scale):
-        segs = []
-        if entity.dxftype() == 'LINE':
-            s, e = entity.dxf.start, entity.dxf.end
-            segs.append(LineString([(s.x*scale, s.y*scale), (e.x*scale, e.y*scale)]))
-        elif entity.dxftype() == 'LWPOLYLINE':
-            pts = entity.get_points('xy')
-            if len(pts) >= 2:
-                scaled = [(x*scale, y*scale) for x, y in pts]
-                for i in range(len(scaled)-1):
-                    segs.append(LineString([scaled[i], scaled[i+1]]))
-        elif entity.dxftype() == 'ARC':
-            start = entity.dxf.start_angle
-            end = entity.dxf.end_angle
-            radius = entity.dxf.radius * scale
-            center = (entity.dxf.center.x * scale, entity.dxf.center.y * scale)
-            if end < start: end += 360
-            step = (end - start) / 10.0
-            pts = []
-            for i in range(11):
-                angle = math.radians(start + i * step)
-                pts.append((center[0] + radius * math.cos(angle),
-                            center[1] + radius * math.sin(angle)))
-            for i in range(len(pts)-1):
-                segs.append(LineString([pts[i], pts[i+1]]))
-        return segs
-
-    def show_temp_dxf_lines(self):
-        """Отображает все временные линии на сцене серым цветом."""
+    def show_temp_dxf_walls(self):
         scene = self.plan_view.scene()
-        # Удаляем старые временные линии (если есть)
         for item in scene.items():
             if isinstance(item, QGraphicsLineItem) and item.pen().color() == QColor(128,128,128):
                 scene.removeItem(item)
-        for seg in self.temp_dxf_segments:
-            coords = list(seg.coords)
-            if len(coords) >= 2:
-                for i in range(len(coords)-1):
-                    line = QGraphicsLineItem(QLineF(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]))
+        for tw in self.temp_dxf_walls:
+            if len(tw.polyline) >= 2:
+                for i in range(len(tw.polyline)-1):
+                    p1 = tw.polyline[i]
+                    p2 = tw.polyline[i+1]
+                    line = QGraphicsLineItem(QLineF(p1[0], p1[1], p2[0], p2[1]))
                     line.setPen(QPen(QColor(128,128,128), 1))
                     scene.addItem(line)
-        # Обновляем границы сцены и подгоняем вид
         rect = scene.itemsBoundingRect()
-        if rect.width() > 0 and rect.height() > 0:
+        if rect.width() > 0:
             self.plan_view.setSceneRect(rect)
             self.plan_view.fitInView(rect, Qt.KeepAspectRatio)
 
     def on_floor_rect_added(self, x, y, w, h):
-        """Слот, вызываемый при завершении рисования прямоугольника этажа."""
         self.floor_rects.append((x, y, w, h))
-        # Визуализируем прямоугольник на сцене (красный, полупрозрачный)
         rect_item = QGraphicsRectItem(x, y, w, h)
         rect_item.setPen(QPen(Qt.red, 2))
         rect_item.setBrush(QBrush(QColor(255,0,0,50)))
@@ -308,11 +277,27 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Не выделено ни одного этажа.")
             return
 
+        max_temp_walls = 10000
+        if len(self.temp_dxf_walls) > max_temp_walls:
+            QMessageBox.warning(self, "Предупреждение",
+                f"Слишком много стен ({len(self.temp_dxf_walls)}). Будут обработаны первые {max_temp_walls}.")
+            self.temp_dxf_walls = self.temp_dxf_walls[:max_temp_walls]
+
+        all_segments = []
+        for tw in self.temp_dxf_walls:
+            pts = tw.polyline
+            for i in range(len(pts)-1):
+                all_segments.append(LineString([pts[i], pts[i+1]]))
+
         for idx, (fx, fy, fw, fh) in enumerate(self.floor_rects):
             floor = Floor(index=len(self.project.floors), name=f"Этаж {len(self.project.floors)+1}")
             floor_box = box(fx, fy, fx+fw, fy+fh)
+
             floor_lines = []
-            for seg in self.temp_dxf_segments:
+            for seg in all_segments:
+                if seg.bounds[2] < fx or seg.bounds[0] > fx+fw or \
+                   seg.bounds[3] < fy or seg.bounds[1] > fy+fh:
+                    continue
                 if seg.intersects(floor_box):
                     intersection = seg.intersection(floor_box)
                     if not intersection.is_empty:
@@ -321,45 +306,15 @@ class MainWindow(QMainWindow):
                         elif intersection.geom_type == 'MultiLineString':
                             floor_lines.extend(list(intersection.geoms))
 
-            # Строим стены и комнаты
-            walls = []
+            if len(floor_lines) > 5000:
+                floor_lines = floor_lines[:5000]
+
             for line in floor_lines:
                 coords = list(line.coords)
                 if len(coords) >= 2:
-                    for i in range(len(coords)-1):
-                        walls.append((coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]))
-            polygons = build_rooms_from_walls(walls, snap_tolerance=0.05, min_area=0.5)
+                    floor.walls.append(Wall(coords[0][0], coords[0][1], coords[-1][0], coords[-1][1]))
 
-            # Центрирование: вычисляем bounding box всех стен и сдвигаем
-            if walls:
-                all_x = [c[0] for w in walls for c in (w[:2], w[2:])]
-                all_y = [c[1] for w in walls for c in (w[:2], w[2:])]
-                min_x, max_x = min(all_x), max(all_x)
-                min_y, max_y = min(all_y), max(all_y)
-                center_x = (min_x + max_x) / 2
-                center_y = (min_y + max_y) / 2
-                shift_x = -center_x
-                shift_y = -center_y
-                shifted_walls = []
-                for w in walls:
-                    shifted_walls.append(((w[0]+shift_x, w[1]+shift_y), (w[2]+shift_x, w[3]+shift_y)))
-                # Пересоздаём комнаты с новыми координатами
-                polygons = build_rooms_from_walls(
-                    [(p1[0], p1[1], p2[0], p2[1]) for p1, p2 in shifted_walls],
-                    snap_tolerance=0.05, min_area=0.5
-                )
-                floor.walls = [Wall(p1[0], p1[1], p2[0], p2[1]) for (p1, p2) in shifted_walls]
-            else:
-                floor.walls = []
-
-            total_area = 0.0
-            for i, pts in enumerate(polygons):
-                room = Room(i, pts, area_m2=0.0)
-                px_area = self._polygon_area(pts)
-                room.area_m2 = px_area
-                total_area += px_area
-                floor.rooms.append(room)
-            floor.total_area_m2 = total_area
+            self.build_rooms_for_floor(floor)
             self.project.floors.append(floor)
 
         self.project.current_floor_index = len(self.project.floors) - len(self.floor_rects)
@@ -368,8 +323,42 @@ class MainWindow(QMainWindow):
         self.refresh_plan_view()
         self.btn_finish_floors.setVisible(False)
         self.floor_rects = []
-        self.temp_dxf_segments = []
+        self.temp_dxf_walls = []
         self.plan_view.set_tool(0)
+
+    def build_rooms_for_floor(self, floor):
+        if not floor.walls:
+            floor.rooms = []
+            return
+        walls_list = [(w.x1, w.y1, w.x2, w.y2) for w in floor.walls]
+        if len(floor.walls) < 1000:
+            walls_list = split_walls_at_intersections(walls_list)
+        else:
+            from shapely.ops import unary_union
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+                lines = [LineString([(x1,y1), (x2,y2)]) for x1,y1,x2,y2 in walls_list]
+                merged = unary_union(lines)
+                simplified = merged.simplify(0.2, preserve_topology=True)
+                if simplified.geom_type == 'LineString':
+                    coords = list(simplified.coords)
+                    walls_list = [(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]) for i in range(len(coords)-1)]
+                elif simplified.geom_type == 'MultiLineString':
+                    walls_list = []
+                    for line in simplified.geoms:
+                        coords = list(line.coords)
+                        walls_list.extend([(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]) for i in range(len(coords)-1)])
+        polygons = build_rooms_from_walls(walls_list)
+        if not polygons:
+            floor.rooms = []
+            return
+        new_rooms = []
+        for i, pts in enumerate(polygons):
+            color = ROOM_COLORS[i % len(ROOM_COLORS)]
+            new_rooms.append(Room(i, pts, color=color))
+        floor.rooms = new_rooms
+        floor.total_area_m2 = sum(self._polygon_area(r.points) for r in new_rooms)
 
     def add_floor(self):
         if not self.project: return
@@ -417,11 +406,9 @@ class MainWindow(QMainWindow):
             scene.addItem(seg)
         self.draw_rooms()
         self.update_room_table()
-        # Центрируем вид на контенте
-        if self.project.rooms or self.project.walls:
-            rect = scene.itemsBoundingRect()
-            if rect.width() > 0 and rect.height() > 0:
-                self.plan_view.fitInView(rect, Qt.KeepAspectRatio)
+        rect = scene.itemsBoundingRect()
+        if rect.width() > 0:
+            self.plan_view.fitInView(rect, Qt.KeepAspectRatio)
 
     def draw_rooms(self):
         scene = self.plan_view.scene()
@@ -501,12 +488,14 @@ class MainWindow(QMainWindow):
     def on_scene_changed(self):
         self.project.walls = self.plan_view.collect_walls()
         self.build_rooms_from_project_walls()
+        # Автоматически применяем общую площадь, если она задана
+        if self.param_total_area.text():
+            self._scale_rooms()
         self.draw_rooms()
         self.update_room_table()
-        # Обновляем общую площадь этажа
-        current_floor = self.project.current_floor
-        current_floor.total_area_m2 = sum(r.area_m2 for r in current_floor.rooms)
-        self.param_total_area.setText(str(current_floor.total_area_m2))
+
+    def build_rooms_from_project_walls(self):
+        self.build_rooms_for_floor(self.project.current_floor)
 
     def detect_walls_cv(self):
         if not self.project or not self.project.image_paths:
@@ -530,44 +519,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка CV", str(e))
 
-    def build_rooms_from_project_walls(self):
-        if not self.project.walls:
-            self.project.rooms = []; return
-        walls_list = [(w.x1, w.y1, w.x2, w.y2) for w in self.project.walls]
-        walls_list = split_walls_at_intersections(walls_list)
-        polygons = build_rooms_from_walls(walls_list)
-        if not polygons:
-            self.project.rooms = []
-            return
-        new_rooms = []
-        for i, pts in enumerate(polygons):
-            color = ROOM_COLORS[i % len(ROOM_COLORS)]
-            new_rooms.append(Room(i, pts, color=color))
-        old_rooms = {r.id: r for r in self.project.rooms}
-        for new_room in new_rooms:
-            center_new = (sum(x for x,y in new_room.points)/len(new_room.points),
-                          sum(y for x,y in new_room.points)/len(new_room.points))
-            for old_room in old_rooms.values():
-                center_old = (sum(x for x,y in old_room.points)/len(old_room.points),
-                              sum(y for x,y in old_room.points)/len(old_room.points))
-                if math.hypot(center_new[0]-center_old[0], center_new[1]-center_old[1]) < 10:
-                    new_room.area_m2 = old_room.area_m2
-                    new_room.traffic = old_room.traffic
-                    new_room.room_type = old_room.room_type
-                    new_room.name = old_room.name
-                    break
-        self.project.rooms = new_rooms
-        self._scale_rooms()
-
     def _scale_rooms(self):
         total_area = float(self.param_total_area.text() or 0)
         if total_area <= 0:
-            if self.project.calibration_line:
-                from image_processor import calibrate_scale
-                scale = calibrate_scale(self.project.calibration_line)
-                for room in self.project.rooms:
-                    px_area = self._polygon_area(room.points)
-                    room.area_m2 = px_area * scale * scale
             return
         if self.project.calibration_line:
             from image_processor import calibrate_scale
@@ -590,10 +544,8 @@ class MainWindow(QMainWindow):
                 else:
                     area_per = total_area / len(self.project.rooms)
                     for room in self.project.rooms: room.area_m2 = area_per
-        # Обновляем общую площадь этажа
         current_floor = self.project.current_floor
-        current_floor.total_area_m2 = sum(r.area_m2 for r in current_floor.rooms)
-        self.param_total_area.setText(str(current_floor.total_area_m2))
+        current_floor.total_area_m2 = total_area  # сохраняем введённое значение
 
     def _polygon_area(self, points):
         n = len(points); area = 0.0
@@ -693,6 +645,11 @@ class MainWindow(QMainWindow):
         ctrl.addWidget(self.employee_list_widget)
         ctrl.addWidget(QPushButton("Добавить сотрудника", clicked=self.add_employee))
         ctrl.addWidget(QPushButton("Пересчитать зоны", clicked=self.recalculate_zones))
+        self.zone_floor_combo = QComboBox()
+        self.zone_floor_combo.addItem("Все этажи")
+        self.zone_floor_combo.currentIndexChanged.connect(self.refresh_zone_display)
+        ctrl.addWidget(QLabel("Этаж:"))
+        ctrl.addWidget(self.zone_floor_combo)
         top.addLayout(ctrl)
         layout.addLayout(top)
         nav = QHBoxLayout()
@@ -733,6 +690,13 @@ class MainWindow(QMainWindow):
             self.employee_list_widget.addItem(item)
             self.employee_list_widget.setItemWidget(item, widget)
         self.recalculate_zones()
+        self.zone_floor_combo.blockSignals(True)
+        self.zone_floor_combo.clear()
+        self.zone_floor_combo.addItem("Все этажи")
+        for floor in self.project.floors:
+            self.zone_floor_combo.addItem(floor.name)
+        self.zone_floor_combo.setCurrentIndex(0)
+        self.zone_floor_combo.blockSignals(False)
 
     def rename_employee(self, index):
         current_name = self.project.employee_names[index] if index < len(self.project.employee_names) else ""
@@ -774,11 +738,19 @@ class MainWindow(QMainWindow):
                 scene.removeItem(item)
             if isinstance(item, QGraphicsTextItem) and item.data(1) == "zone_label":
                 scene.removeItem(item)
+        selected_floor = self.zone_floor_combo.currentText()
         for zone in self.project.zones:
             col = QColor(*zone.color); brush = QBrush(col); pen = QPen(Qt.black, 1)
             for rid in zone.room_ids:
                 room = next((r for r in self.project.all_rooms() if r.id == rid), None)
                 if room:
+                    room_floor = None
+                    for i, floor in enumerate(self.project.floors):
+                        if room in floor.rooms:
+                            room_floor = floor.name
+                            break
+                    if selected_floor != "Все этажи" and room_floor != selected_floor:
+                        continue
                     poly = QPolygonF([QPointF(x,y) for x,y in room.points])
                     item = scene.addPolygon(poly, pen, brush)
                     item.setData(Qt.UserRole, zone.id)
@@ -832,8 +804,14 @@ class MainWindow(QMainWindow):
                         room = next((r for r in self.project.all_rooms() if r.id == rid), None)
                         if room:
                             total_area += room.area_m2
+                            # Определяем этаж
+                            floor_name = "?"
+                            for f_idx, floor in enumerate(self.project.floors):
+                                if room in floor.rooms:
+                                    floor_name = floor.name
+                                    break
                             type_str = f" ({room.room_type})" if room.room_type else ""
-                            room_details.append(f"- {room.name}{type_str} {room.area_m2:.1f} м²")
+                            room_details.append(f"- [{floor_name}] {room.name}{type_str} {room.area_m2:.1f} м²")
                 name = self.project.employee_names[i] if i < len(self.project.employee_names) else f"Сотрудник {i+1}"
                 text = f"{name} ({total_area:.1f} м²)\n" + "\n".join(room_details)
                 if total_area > 100: text = f"<font color='red'>{text}</font>"

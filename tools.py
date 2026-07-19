@@ -87,7 +87,7 @@ class PlanView(QGraphicsView):
     def __init__(self, scene, main_window, parent=None):
         super().__init__(scene, parent)
         self.main_window = main_window
-        self.current_tool = 0
+        self.current_tool = 0   # 0=Select, 1=Eraser, 2=Wall, 3=Calibrate, 4=RectRoom, 5=Brush, 6=SelectFloor
         self.drawing = False
         self.start_point = None
         self.temp_line = None
@@ -151,13 +151,6 @@ class PlanView(QGraphicsView):
             self.scale(factor, factor)
         else:
             self.scale(1/factor, 1/factor)
-
-    def zoom_to_fit(self, margin=50):
-        """Подгоняет масштаб так, чтобы все элементы сцены были видны с отступом."""
-        rect = self.scene().itemsBoundingRect()
-        if rect.width() > 0 and rect.height() > 0:
-            rect.adjust(-margin, -margin, margin, margin)
-            self.fitInView(rect, Qt.KeepAspectRatio)
 
     def _snap_angle(self, angle):
         if QApplication.keyboardModifiers() & Qt.ControlModifier:
@@ -223,7 +216,6 @@ class PlanView(QGraphicsView):
                         item.setBrush(brush)
                 self._highlighted_room = room_id
 
-    # ---------- Обработка мыши ----------
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
             if self.current_tool in (2, 4):
@@ -242,13 +234,13 @@ class PlanView(QGraphicsView):
         if event.button() == Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
 
-            if self.current_tool == 6:  # Выделение этажа (прямоугольник)
+            if self.current_tool == 6:  # SelectFloor – рисуем прямоугольник этажа
                 self.start_point = scene_pos
                 self.drawing = True
                 event.accept()
                 return
 
-            if self.current_tool == 5:  # Кисть
+            if self.current_tool == 5:  # Brush
                 room_id = self._room_at_pos(scene_pos)
                 if room_id is not None:
                     room = next((r for r in self.main_window.project.rooms if r.id == room_id), None)

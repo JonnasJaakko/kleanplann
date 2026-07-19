@@ -35,9 +35,9 @@ class Floor:
     def __init__(self, index: int = 0, name: str = "Этаж 1"):
         self.index = index
         self.name = name
-        self.walls: List[Wall] = []
-        self.rooms: List[Room] = []
-        self.total_area_m2: float = 0.0   # новое поле
+        self.walls: List[Wall] = []      # единый список всех стен этажа
+        self.rooms: List[Room] = []      # комнаты, построенные из этих стен
+        self.total_area_m2: float = 0.0
     def to_dict(self):
         return {
             'index': self.index,
@@ -154,6 +154,7 @@ class Project:
         if 'floors' in data:
             p.floors = [Floor.from_dict(f) for f in data['floors']]
         else:
+            # обратная совместимость (старые проекты)
             old_walls = [Wall.from_dict(w) for w in data.get('walls', [])]
             old_rooms = [Room.from_dict(r) for r in data.get('rooms', [])]
             p.floors = [Floor(0, "Этаж 1")]
