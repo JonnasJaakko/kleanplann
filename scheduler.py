@@ -1,59 +1,123 @@
+"""
+Планирование расписания уборки с оптимизацией маршрута (ближайший сосед)
+и учётом времени на перемещение между комнатами.
+"""
 from datetime import datetime, date, timedelta, time
 from typing import List, Tuple
-from project import Project, Room, CleaningTask, Shift
-from sanitarnorm import get_cleaning_time_minutes, get_frequency_per_day, TRANSIT_TIME_MINUTES
 import math
+from project import Project, Room, CleaningTask, Shift
+from sanitarnorm import get_cleaning_time_minutes, get_frequency_per_day
 
-def _time_to_minutes(t: str) -> int:
-    h, m = map(int, t.split(':'))
-    return h*60 + m
+# Средняя скорость перемещения уборщика (м/мин)
+WALKING_SPEED_M_PER_MIN = 50.0
 
-def _distance(room1: Room, room2: Room):
-    """Приближённое расстояние между центрами комнат."""
-    c1 = (sum(p[0] for p in room1.points)/len(room1.points), sum(p[1] for p in room1.points)/len(room1.points))
-    c2 = (sum(p[0] for p in room2.points)/len(room2.points), sum(p[1] for p in room2.points)/len(room2.points))
-    return math.hypot(c1[0]-c2[0], c1[1]-c2[1])
+def _distance_m(room1: Room, room2: Room) -> float:
+    """Евклидово расстояние между центрами комнат."""
+    cx1 = sum(p[0] for p in room1.points) / len(room1.points)
+    cy1 = sum(p[1] for p in room1.points) / len(room1.points)
+    cx2 = sum(p[0] for p in room2.points) / len(room2.points)
+    cy2 = sum(p[1] for p in room2.points) / len(room2.points)
+    return math.hypot(cx2 - cx1, cy2 - cy1)
+
+def _travel_time_min(room1: Room, room2: Room) -> float:
+    """Время перемещения между комнатами в минутах."""
+    return _distance_m(room1, room2) / WALKING_SPEED_M_PER_MIN
+
+def _nearest_neighbor_route(rooms: List[Room], start_point: Tuple[float, float] = (0,0)) -> List[Room]:
+    """
+    Возвращает список комнат, упорядоченный по эвристике ближайшего соседа,
+    начиная с комнаты, ближайшей к start_point.
+    """
+    if not rooms:
+        return []
+    remaining = rooms.copy()
+    # Начинаем с ближайшей к start_point
+    current = min(remaining, key=lambda r: _distance_m(r, Room(-1, [start_point])))
+    route = [current]
+    remaining.remove(current)
+    while remaining:
+        last = route[-1]
+        next_room = min(remaining, key=lambda r: _distance_m(last, r))
+        route.append(next_room)
+        remaining.remove(next_room)
+    return route
 
 def plan_cleaning_schedule(project: Project) -> List[CleaningTask]:
+    """
+    Генерирует оптимизированное расписание уборки.
+    Для каждого сотрудника строится маршрут по зонам ответственности.
+    """
     tasks = []
-    employees = project.employees_count
+    # Собираем все комнаты всех этажей
+    all_rooms = project.all_rooms()
+    if not all_rooms:
+        return tasks
+
+    # Определяем рабочие интервалы смен
+    shift_intervals = []
+    for shift in project.shifts:
+        start_min = int(shift.start_time.split(':')[0]) * 60 + int(shift.start_time.split(':')[1])
+        end_min = int(shift.end_time.split(':')[0]) * 60 + int(shift.end_time.split(':')[1])
+        shift_intervals.append((start_min, end_min))
+
+    total_days = (project.end_date - project.start_date).days + 1
     weather = project.weather_factor
-    # Для каждого этажа отдельно планируем
-    for floor in project.floors:
-        rooms = floor.rooms
-        if not rooms:
+
+    # Для каждого сотрудника
+    for emp_idx in range(project.employees_count):
+        # Находим зоны, назначенные этому сотруднику
+        emp_zones = [z for z in project.zones if z.employee_index == emp_idx]
+        if not emp_zones:
             continue
-        # Определяем, сколько раз нужно убрать каждую комнату за весь период
-        total_days = (project.end_date - project.start_date).days + 1
-        room_tasks = []
-        for room in rooms:
-            freq = get_frequency_per_day(room.room_type) * weather
-            time_per_clean = get_cleaning_time_minutes(room.room_type, room.area_m2)
-            for day in range(total_days):
-                for _ in range(int(freq)):
-                    room_tasks.append((room, time_per_clean, day))
-        # Группируем задачи по сотрудникам (жадное распределение по близости)
-        # Для простоты: раздаём задачи по кругу
-        tasks_per_emp = [[] for _ in range(employees)]
-        for i, (room, t, day) in enumerate(room_tasks):
-            tasks_per_emp[i % employees].append((room, t, day))
-        # Генерируем конкретные времена
-        for emp_idx, emp_tasks in enumerate(tasks_per_emp):
-            # Сортируем задачи по дню, затем по близости (TSP приближение)
-            emp_tasks.sort(key=lambda x: (x[2], x[0].id))
-            current_day = None
-            # Используем смену по умолчанию (первую)
-            shift = project.shifts[0]
-            shift_start = _time_to_minutes(shift.start_time)
-            shift_end = _time_to_minutes(shift.end_time)
-            for room, t, day in emp_tasks:
-                start_time = datetime.combine(project.start_date + timedelta(days=day), time())
-                # Назначаем на начало смены (упрощённо)
-                start_dt = start_time + timedelta(minutes=shift_start)
-                end_dt = start_dt + timedelta(minutes=t)
-                # Проверяем, что не вышли за смену, иначе переносим на следующий день
-                if end_dt.hour*60 + end_dt.minute > shift_end:
-                    start_dt += timedelta(days=1)
-                    end_dt = start_dt + timedelta(minutes=t)
-                tasks.append(CleaningTask(room.id, floor.index, start_dt, end_dt, emp_idx))
+
+        # Собираем комнаты сотрудника
+        emp_rooms = []
+        for zone in emp_zones:
+            for rid in zone.room_ids:
+                room = next((r for r in all_rooms if r.id == rid), None)
+                if room:
+                    emp_rooms.append(room)
+
+        if not emp_rooms:
+            continue
+
+        # Оптимизируем маршрут (ближайший сосед)
+        # Стартовая точка – центр здания (0,0) или первый этаж
+        route = _nearest_neighbor_route(emp_rooms)
+
+        # Планируем на каждый день
+        current_day = project.start_date
+        for day_offset in range(total_days):
+            day = project.start_date + timedelta(days=day_offset)
+            # Используем первую смену (можно будет расширить)
+            shift_start, shift_end = shift_intervals[0]
+            current_time = shift_start  # в минутах от начала дня
+
+            for room in route:
+                freq = get_frequency_per_day(room.room_type) * weather
+                # Округляем частоту – сколько раз в день нужно убирать
+                times_per_day = max(1, round(freq))
+                for _ in range(times_per_day):
+                    # Время уборки
+                    clean_time = get_cleaning_time_minutes(room.room_type, room.area_m2)
+                    # Добавляем время на перемещение от предыдущей комнаты
+                    if tasks:
+                        last_room = all_rooms[tasks[-1].room_id] if tasks[-1].room_id < len(all_rooms) else None
+                        if last_room:
+                            travel = _travel_time_min(last_room, room)
+                            current_time += travel
+
+                    # Проверяем, не выходим ли за пределы смены
+                    if current_time + clean_time > shift_end:
+                        # Переносим на следующий день (упрощённо)
+                        current_time = shift_start
+                        day += timedelta(days=1)
+
+                    start_dt = datetime.combine(day, time(hour=0, minute=0)) + timedelta(minutes=current_time)
+                    end_dt = start_dt + timedelta(minutes=clean_time)
+                    tasks.append(CleaningTask(room.id, 0, start_dt, end_dt, emp_idx))
+                    current_time += clean_time
+
+    # Сортируем задачи по времени для красивого отображения
+    tasks.sort(key=lambda t: (t.employee, t.start_dt))
     return tasks

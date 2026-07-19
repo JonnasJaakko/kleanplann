@@ -35,17 +35,44 @@ class Floor:
     def __init__(self, index: int = 0, name: str = "Этаж 1"):
         self.index = index
         self.name = name
-        self.walls: List[Wall] = []      # единый список всех стен этажа
-        self.rooms: List[Room] = []      # комнаты, построенные из этих стен
+        self.walls: List[Wall] = []
+        self._cached_rooms: List[Room] = []
+        self._dirty = True          # True = нужно перестроить комнаты
         self.total_area_m2: float = 0.0
+
+    @property
+    def rooms(self):
+        """Возвращает комнаты, перестраивая их при необходимости."""
+        if self._dirty:
+            # Здесь будет вызываться build_rooms_for_floor из MainWindow.
+            # Чтобы избежать циклического импорта, используем ленивый вызов.
+            # Сам метод build_rooms_for_floor будет установлен извне (в app.py).
+            if hasattr(self, '_builder'):
+                self._builder(self)
+            else:
+                # Запасной вариант (если билдер не назначен)
+                pass
+            self._dirty = False
+        return self._cached_rooms
+
+    @rooms.setter
+    def rooms(self, value):
+        self._cached_rooms = value
+        self._dirty = False
+
+    def mark_dirty(self):
+        """Помечает, что стены изменились и комнаты нужно пересчитать."""
+        self._dirty = True
+
     def to_dict(self):
         return {
             'index': self.index,
             'name': self.name,
             'walls': [w.to_dict() for w in self.walls],
-            'rooms': [r.to_dict() for r in self.rooms],
+            'rooms': [r.to_dict() for r in self._cached_rooms],
             'total_area_m2': self.total_area_m2
         }
+
     @classmethod
     def from_dict(cls, data):
         f = cls(data['index'], data['name'])
