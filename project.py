@@ -36,23 +36,14 @@ class Floor:
         self.index = index
         self.name = name
         self.walls: List[Wall] = []
-        self._cached_rooms: List[Room] = []
-        self._dirty = True          # True = нужно перестроить комнаты
+        self._cached_rooms: List[Room] = []   # кэш комнат
+        self._dirty = True                    # True = нужно перестроить комнаты
+        self._builder = None                  # будет установлен извне (MainWindow.build_rooms_for_floor)
         self.total_area_m2: float = 0.0
 
     @property
     def rooms(self):
-        """Возвращает комнаты, перестраивая их при необходимости."""
-        if self._dirty:
-            # Здесь будет вызываться build_rooms_for_floor из MainWindow.
-            # Чтобы избежать циклического импорта, используем ленивый вызов.
-            # Сам метод build_rooms_for_floor будет установлен извне (в app.py).
-            if hasattr(self, '_builder'):
-                self._builder(self)
-            else:
-                # Запасной вариант (если билдер не назначен)
-                pass
-            self._dirty = False
+        """Возвращает закэшированные комнаты (НЕ вызывает перестроение!)."""
         return self._cached_rooms
 
     @rooms.setter
@@ -181,7 +172,6 @@ class Project:
         if 'floors' in data:
             p.floors = [Floor.from_dict(f) for f in data['floors']]
         else:
-            # обратная совместимость (старые проекты)
             old_walls = [Wall.from_dict(w) for w in data.get('walls', [])]
             old_rooms = [Room.from_dict(r) for r in data.get('rooms', [])]
             p.floors = [Floor(0, "Этаж 1")]

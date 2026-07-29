@@ -140,21 +140,16 @@ class MainWindow(QMainWindow):
             scene.addPixmap(pix)
             self.plan_screen.plan_view.setSceneRect(QRectF(pix.rect()))
         else:
-            # Не фиксируем размер сцены – он будет определён автоматически
-            self.plan_screen.plan_view.setSceneRect(QRectF())   # сброс фиксированного прямоугольника
-
+            self.plan_screen.plan_view.setSceneRect(QRectF())
         for wall in self.project.walls:
             from tools import WallSegmentItem
             seg = WallSegmentItem(QPointF(wall.x1, wall.y1), QPointF(wall.x2, wall.y2))
             scene.addItem(seg)
-
         self.draw_rooms()
         self.update_room_table()
-
-        # Устанавливаем sceneRect по реальному содержимому и центрируем
         rect = scene.itemsBoundingRect()
         if rect.width() > 0 and rect.height() > 0:
-            self.plan_screen.plan_view.setSceneRect(rect)       # ограничиваем сцену содержимым
+            self.plan_screen.plan_view.setSceneRect(rect)
             self.plan_screen.plan_view.fitInView(rect, Qt.KeepAspectRatio)
 
     def draw_rooms(self):
@@ -216,61 +211,42 @@ class MainWindow(QMainWindow):
         if not floor.walls:
             floor.rooms = []
             return
-        if not floor._dirty and changed_walls is None:
+        if changed_walls is not None:
+            floor._dirty = True
+        if not floor._dirty:
             return
 
-        # Если были ручные изменения или стен меньше 500, используем полный алгоритм
-        if (changed_walls is not None) or (len(floor.walls) < 500):
-            walls_list = [(w.x1, w.y1, w.x2, w.y2) for w in floor.walls]
-            walls_list = split_walls_at_intersections(walls_list)
-            polygons = build_rooms_from_walls(walls_list)
-            if not polygons:
-                floor.rooms = []
-                return
-            new_rooms = []
-            for i, pts in enumerate(polygons):
-                color = ROOM_COLORS[i % len(ROOM_COLORS)]
-                new_rooms.append(Room(i, pts, color=color))
-            # Переносим старые свойства
-            old_rooms = {r.id: r for r in floor.rooms}
-            for new_room in new_rooms:
-                center_new = (sum(x for x,y in new_room.points)/len(new_room.points),
-                              sum(y for x,y in new_room.points)/len(new_room.points))
-                for old_room in old_rooms.values():
-                    center_old = (sum(x for x,y in old_room.points)/len(old_room.points),
-                                  sum(y for x,y in old_room.points)/len(old_room.points))
-                    if math.hypot(center_new[0]-center_old[0], center_new[1]-center_old[1]) < 0.5:
-                        new_room.area_m2 = old_room.area_m2
-                        new_room.traffic = old_room.traffic
-                        new_room.room_type = old_room.room_type
-                        new_room.name = old_room.name
-                        break
-            floor.rooms = new_rooms
-        else:
-            # Быстрый режим для больших DXF-проектов
-            lines = [LineString([(w.x1, w.y1), (w.x2, w.y2)]) for w in floor.walls]
-            merged = unary_union(lines)
-            merged = snap(merged, merged, 0.2)
-            if merged.geom_type == 'LineString':
-                line_col = [merged]
-            elif merged.geom_type == 'MultiLineString':
-                line_col = list(merged.geoms)
-            else:
-                line_col = []
-            import warnings
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=RuntimeWarning)
-                polygons = list(polygonize(line_col))
-            rooms = []
-            for i, poly in enumerate(polygons):
-                if poly.is_valid and poly.area > 0.5:
-                    pts = list(poly.exterior.coords)
-                    if len(pts) > 1 and pts[0] == pts[-1]:
-                        pts = pts[:-1]
-                    rooms.append(Room(i, pts, area_m2=poly.area))
-            floor.rooms = rooms
+        walls_list = [(w.x1, w.y1, w.x2, w.y2) for w in floor.walls]
+        walls_list = split_walls_at_intersections(walls_list)
+        polygons = build_rooms_from_walls(walls_list)
 
-        floor.total_area_m2 = sum(r.area_m2 for r in floor._cached_rooms)
+        if not polygons:
+            floor.rooms = []
+            floor._dirty = False
+            return
+
+        new_rooms = []
+        for i, pts in enumerate(polygons):
+            color = ROOM_COLORS[i % len(ROOM_COLORS)]
+            new_rooms.append(Room(i, pts, color=color))
+
+        old_rooms = {r.id: r for r in floor._cached_rooms}
+        for new_room in new_rooms:
+            center_new = (sum(x for x,y in new_room.points)/len(new_room.points),
+                          sum(y for x,y in new_room.points)/len(new_room.points))
+            for old_room in old_rooms.values():
+                center_old = (sum(x for x,y in old_room.points)/len(old_room.points),
+                              sum(y for x,y in old_room.points)/len(old_room.points))
+                if math.hypot(center_new[0]-center_old[0], center_new[1]-center_old[1]) < 0.5:
+                    new_room.area_m2 = old_room.area_m2
+                    new_room.traffic = old_room.traffic
+                    new_room.room_type = old_room.room_type
+                    new_room.name = old_room.name
+                    break
+
+        floor.rooms = new_rooms
+        floor.total_area_m2 = sum(r.area_m2 for r in new_rooms)
+        floor._dirty = False
 
     def _scale_rooms(self):
         total_area = float(self.plan_screen.param_total_area.text() or 0)
@@ -351,7 +327,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Сначала задайте площадь.")
             return
         percents = [100.0 / self.project.employees_count] * self.project.employees_count
-        self.project.zones = manual_distribution(all_rooms, percents)
+        self.project.zones = manual_distribution(all_rooms, percents,
+                                                 priority_mode=self.project.priority_mode)
         self.zone_screen.refresh_zone_display()
         self.update_employee_labels()
 

@@ -41,6 +41,13 @@ class ZoneScreen(QWidget):
         ctrl.addWidget(QPushButton("Пересчитать зоны",
                                    clicked=self.main_window.recalculate_zones))
 
+        # Выбор приоритета
+        self.priority_combo = QComboBox()
+        self.priority_combo.addItems(["По площади", "По проходимости", "По сложности"])
+        self.priority_combo.currentIndexChanged.connect(self.on_priority_changed)
+        ctrl.addWidget(QLabel("Приоритет:"))
+        ctrl.addWidget(self.priority_combo)
+
         self.zone_floor_combo = QComboBox()
         self.zone_floor_combo.addItem("Все этажи")
         self.zone_floor_combo.currentIndexChanged.connect(self.refresh_zone_display)
@@ -97,6 +104,15 @@ class ZoneScreen(QWidget):
             self.employee_list_widget.addItem(item)
             self.employee_list_widget.setItemWidget(item, widget)
 
+        # Устанавливаем текущий приоритет из проекта
+        mode = project.priority_mode
+        if mode == 'traffic':
+            self.priority_combo.setCurrentIndex(1)
+        elif mode == 'complexity':
+            self.priority_combo.setCurrentIndex(2)
+        else:
+            self.priority_combo.setCurrentIndex(0)
+
         self.main_window.recalculate_zones()
 
         self.zone_floor_combo.blockSignals(True)
@@ -106,6 +122,11 @@ class ZoneScreen(QWidget):
             self.zone_floor_combo.addItem(floor.name)
         self.zone_floor_combo.setCurrentIndex(0)
         self.zone_floor_combo.blockSignals(False)
+
+    def on_priority_changed(self, idx):
+        modes = ['area', 'traffic', 'complexity']
+        self.project.priority_mode = modes[idx]
+        self.main_window.recalculate_zones()
 
     def refresh_zone_display(self):
         scene = self.zone_scene
