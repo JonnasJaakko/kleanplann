@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# артефакты правки алгоритма (не для репозитория)
+*.py.orig
+rooms-algorithm.patch
+
+# сгенерированные тестовые чертежи — пересоздаются make_*.py
+plan_test.dxf
+plan_corridor.dxf
+plan_stress.dxf
+plan_big.dxf

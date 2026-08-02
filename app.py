@@ -21,14 +21,15 @@ import numpy as np
 from shapely.geometry import LineString, box
 
 from project import Project, Wall, Room, Floor, Zone, CleaningTask
-from room_builder import build_rooms_from_walls, nearest_point_on_segment, split_walls_at_intersections
+from room_builder import (build_rooms_from_walls, detect_rooms,
+                          nearest_point_on_segment, split_walls_at_intersections)
 from zone_manager import manual_distribution
 from cost_calculator import calculate_cost
 from report_generator import generate_report
 from sanitarnorm import COMPLEXITY_FACTOR, DEFAULT_FREQUENCY_PER_DAY
 from scheduler import plan_cleaning_schedule
 from calendar_export import export_tasks_csv, export_tasks_excel
-from dxf_analyzer import analyze_dxf
+from dxf_analyzer import analyze_dxf, load_wall_segments
 from tools import PlanView, WallSegmentItem, WallVertexItem, UndoStack
 
 PROJECTS_DIR = "projects"
@@ -67,7 +68,8 @@ class MainWindow(QMainWindow):
 
         # Переменные для временного хранения загруженного DXF до разметки этажей
         self.temp_dxf_path = None
-        self.temp_dxf_segments = []  # список LineString
+        self.temp_dxf_segments = []  # список LineString (метры)
+        self.dxf_info = None         # слои стен, масштаб, толщина стены
         self.floor_rects = []        # список (x,y,w,h)
 
     # ---------- Стартовый экран ----------
@@ -209,18 +211,9 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Загрузить DXF", "", "DXF Files (*.dxf)")
         if not path: return
 
-        # 1. Читаем DXF и собираем все линии во временный список
+        # 1. Читаем DXF: слои стен, блоки развёрнуты, мебель и размеры отсеяны
         try:
-            doc = ezdxf.readfile(path)
-            msp = doc.modelspace()
-            scale = self._get_dxf_scale(doc)
-            segments = []
-            for entity in msp:
-                segs = self._extract_lines(entity, scale)
-                segments.extend(segs)
-            if not segments:
-                QMessageBox.warning(self, "Ошибка", "В файле не найдено ни одной линии.")
-                return
+            doc, segments, info = load_wall_segments(path)
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Не удалось прочитать DXF: {e}")
             return
@@ -228,6 +221,7 @@ class MainWindow(QMainWindow):
         # 2. Сохраняем временные данные
         self.temp_dxf_path = path
         self.temp_dxf_segments = segments
+        self.dxf_info = info
         self.floor_rects = []
 
         # 3. Отображаем все линии на сцене (серым цветом)
@@ -236,8 +230,15 @@ class MainWindow(QMainWindow):
         # 4. Переключаем инструмент на выделение этажей
         self.plan_view.set_tool(6)  # SelectFloor
         self.btn_finish_floors.setVisible(True)
+        t = info.get("wall_thickness_m")
         QMessageBox.information(self, "Разметка этажей",
-            "Выделите прямоугольные области для каждого этажа. Нажмите 'Завершить разметку', когда закончите.")
+            f"Слои стен: {', '.join(info['wall_layers'])}\n"
+            f"Отрезков: {len(segments)}; толщина стены ≈ {t:.2f} м\n\n"
+            "Выделите прямоугольные области для каждого этажа. "
+            "Нажмите 'Завершить разметку', когда закончите."
+            if t else
+            "Выделите прямоугольные области для каждого этажа. "
+            "Нажмите 'Завершить разметку', когда закончите.")
 
     def _get_dxf_scale(self, doc):
         insunits = doc.header.get("$INSUNITS", 0)
@@ -328,29 +329,29 @@ class MainWindow(QMainWindow):
                 if len(coords) >= 2:
                     for i in range(len(coords)-1):
                         walls.append((coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]))
-            polygons = build_rooms_from_walls(walls, snap_tolerance=0.05, min_area=0.5)
 
-            # Центрирование: вычисляем bounding box всех стен и сдвигаем
+            # Центрирование: сдвигаем всё в начало координат ОДИН раз,
+            # комнаты строим уже по сдвинутым стенам
             if walls:
-                all_x = [c[0] for w in walls for c in (w[:2], w[2:])]
-                all_y = [c[1] for w in walls for c in (w[:2], w[2:])]
-                min_x, max_x = min(all_x), max(all_x)
-                min_y, max_y = min(all_y), max(all_y)
-                center_x = (min_x + max_x) / 2
-                center_y = (min_y + max_y) / 2
-                shift_x = -center_x
-                shift_y = -center_y
-                shifted_walls = []
-                for w in walls:
-                    shifted_walls.append(((w[0]+shift_x, w[1]+shift_y), (w[2]+shift_x, w[3]+shift_y)))
-                # Пересоздаём комнаты с новыми координатами
-                polygons = build_rooms_from_walls(
-                    [(p1[0], p1[1], p2[0], p2[1]) for p1, p2 in shifted_walls],
-                    snap_tolerance=0.05, min_area=0.5
-                )
-                floor.walls = [Wall(p1[0], p1[1], p2[0], p2[1]) for (p1, p2) in shifted_walls]
+                all_x = [c for w in walls for c in (w[0], w[2])]
+                all_y = [c for w in walls for c in (w[1], w[3])]
+                shift_x = -(min(all_x) + max(all_x)) / 2
+                shift_y = -(min(all_y) + max(all_y)) / 2
+                walls = [(w[0]+shift_x, w[1]+shift_y, w[2]+shift_x, w[3]+shift_y)
+                         for w in walls]
+                floor.walls = [Wall(*w) for w in walls]
             else:
                 floor.walls = []
+
+            info = self.dxf_info or {}
+            polygons = detect_rooms(
+                walls,
+                wall_thickness=info.get("wall_thickness_m"),
+                door_gap=1.6,
+                min_area=1.5,
+                min_width=0.7,
+                simplify_tol=0.03,
+            )
 
             total_area = 0.0
             for i, pts in enumerate(polygons):
@@ -534,8 +535,8 @@ class MainWindow(QMainWindow):
         if not self.project.walls:
             self.project.rooms = []; return
         walls_list = [(w.x1, w.y1, w.x2, w.y2) for w in self.project.walls]
-        walls_list = split_walls_at_intersections(walls_list)
-        polygons = build_rooms_from_walls(walls_list)
+        # стены редактора — одиночные осевые линии, поэтому режим строго thin
+        polygons = build_rooms_from_walls(walls_list, mode="thin")
         if not polygons:
             self.project.rooms = []
             return
