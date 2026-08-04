@@ -1,0 +1,9 @@
+PySide6>=6.5.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+python-docx>=0.8.11
+Pillow>=9.4.0
+openpyxl>=3.0
+ezdxf>=1.0
+shapely>=2.0

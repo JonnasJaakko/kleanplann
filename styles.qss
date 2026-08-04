@@ -1,0 +1,12 @@
+QPushButton {
+    background-color: #ffffff; border: 1px solid #d0d0d0; border-radius: 8px;
+    padding: 6px 16px; font-size: 13px; color: #333;
+}
+QPushButton:hover { border-color: #a0a0a0; }
+QPushButton:pressed { background-color: #f0f0f0; border-color: #909090; }
+QLineEdit, QSpinBox, QDoubleSpinBox {
+    border: 1px solid #d0d0d0; border-radius: 4px; padding: 4px;
+}
+QTableWidget { gridline-color: #e0e0e0; selection-background-color: #c0d8f0; }
+QListWidget { border: 1px solid #d0d0d0; border-radius: 4px; }
+QComboBox { padding: 4px; }
