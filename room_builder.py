@@ -17,6 +17,15 @@ room_builder — построение комнат (замкнутых обла�
 
 Все параметры длины — в тех же единицах, что и координаты стен
 (dxf_analyzer передаёт метры; редактор app.py — пиксели сцены).
+
+Схематизация (режим "centerline"):
+----------------------------------
+Для интерактивного редактора нужен НЕ контур стены, а её ОСЬ.  extract_wall_centerlines()
+находит пары параллельных отрезков на расстоянии толщины стены и заменяет их
+одним отрезком — серединой между гранями.  Одиночные линии (ненесущие
+перегородки, уже осевые) сохраняются как есть.  cleanup_segments() затем
+выбрасывает мусор: дубликаты, короткие изолированные обрезки, висячие хвосты
+от балок/размерных линий и склеивает коллинеарные отрезки.
 """
 
 from __future__ import annotations
@@ -334,6 +343,470 @@ def _bridge_openings(lines: List[LineString], max_gap: float) -> List[LineString
         used.add(best_j)
         bridges.append(seg)
     return bridges
+
+
+# ======================= схематизация и чистка =======================
+def _line_angle(line: LineString) -> float:
+    (x1, y1) = line.coords[0]
+    (x2, y2) = line.coords[-1]
+    return math.atan2(y2 - y1, x2 - x1)
+
+
+def _project_point_on_line(p: Tuple[float, float], line: LineString):
+    """Ортогональная проекция точки p на отрезок line (с ограничением)."""
+    (a1, b1) = line.coords[0]
+    (a2, b2) = line.coords[-1]
+    vx, vy = a2 - a1, b2 - b1
+    ll = vx * vx + vy * vy
+    if ll < 1e-12:
+        return None
+    t = ((p[0] - a1) * vx + (p[1] - b1) * vy) / ll
+    t = max(0.0, min(1.0, t))
+    return (a1 + vx * t, b1 + vy * t)
+
+
+def _axis_overlap(line_a: LineString, line_b: LineString) -> Optional[LineString]:
+    """
+    Осевой отрезок для пары параллельных линий.
+
+    Берётся общая часть проекций двух граней стены на общее направление,
+    для каждого параметра t вычисляется середина между гранями.
+    """
+    (x1, y1) = line_a.coords[0]
+    (x2, y2) = line_a.coords[-1]
+    ux, uy = x2 - x1, y2 - y1
+    length = math.hypot(ux, uy)
+    if length < 1e-12:
+        return None
+    ux /= length
+    uy /= length
+
+    # проекции концов B на направление A
+    (a1, b1) = line_b.coords[0]
+    (a2, b2) = line_b.coords[-1]
+    t_a = (a1 - x1) * ux + (b1 - y1) * uy
+    t_b = (a2 - x1) * ux + (b2 - y1) * uy
+    t1, t2 = sorted((t_a, t_b))
+
+    t_start = max(0.0, t1)
+    t_end = min(length, t2)
+    if t_end - t_start < 1e-9:
+        return None
+
+    def mid(t: float):
+        pa = (x1 + ux * t, y1 + uy * t)
+        pb = _project_point_on_line(pa, line_b)
+        if pb is None:
+            return None
+        return ((pa[0] + pb[0]) / 2.0, (pa[1] + pb[1]) / 2.0)
+
+    m1 = mid(t_start)
+    m2 = mid(t_end)
+    if m1 is None or m2 is None:
+        return None
+    return LineString([m1, m2])
+
+
+def extract_wall_centerlines(walls: Iterable[Wall],
+                             wall_thickness: Optional[float] = None,
+                             max_gap_ratio: float = 2.5,
+                             min_pair_overlap: float = 0.35) -> List[Wall]:
+    """
+    Преобразует двухлинейные стены в осевые линии — «перенос чертежа в схему».
+
+    Каждая пара параллельных отрезков на расстоянии ≈ толщине стены
+    заменяется ОДНИМ отрезком — серединой между гранями.  Одиночные линии
+    (уже осевые, ненесущие перегородки, «негабаритные») сохраняются как есть.
+
+    Возвращает список стен в том же формате (x1, y1, x2, y2).
+    """
+    lines = _as_lines(walls)
+    if not lines:
+        return []
+
+    if wall_thickness is None or wall_thickness <= 0:
+        wall_thickness, _ = estimate_wall_thickness(lines)
+    if wall_thickness is None or wall_thickness <= 0:
+        # пар нет — ничего схематизировать, все линии уже одиночные
+        return [(ln.coords[0][0], ln.coords[0][1],
+                 ln.coords[-1][0], ln.coords[-1][1]) for ln in lines]
+
+    min_len = max(wall_thickness * 2.5, 0.45)
+    search = wall_thickness * max_gap_ratio
+    tree = STRtree(lines)
+
+    pair_idx: Dict[int, int] = {}
+    centerlines: List[LineString] = []
+
+    for i, line in enumerate(lines):
+        if i in pair_idx or line.length < min_len:
+            continue
+        best_j, best_seg = None, None
+        ang_i = _line_angle(line)
+        for j in tree.query(line.buffer(search)):
+            if i >= j or j in pair_idx:
+                continue
+            other = lines[j]
+            if other.length < min_len:
+                continue
+            # параллельность (±8°)
+            if abs((ang_i - _line_angle(other) + math.pi / 2) % math.pi - math.pi / 2) > math.radians(8):
+                continue
+            d = line.distance(other)
+            if not wall_thickness * 0.35 <= d <= search:
+                continue
+            seg = _axis_overlap(line, other)
+            if seg is None:
+                continue
+            if seg.length < min_len * min_pair_overlap:
+                continue
+            best_j, best_seg = j, seg
+            break
+        if best_j is not None:
+            pair_idx[i] = best_j
+            pair_idx[best_j] = i
+            centerlines.append(best_seg)
+
+    # одиночные линии, не вошедшие в пары, сохраняем как есть
+    result = list(centerlines)
+    for i, ln in enumerate(lines):
+        if i not in pair_idx and ln.length >= min_len * 0.6:
+            result.append(ln)
+
+    logger.info("Centerlines: %d стен -> %d осей "
+                "(осталось одиночных: %d)",
+                len(lines), len(centerlines),
+                sum(1 for i, ln in enumerate(lines)
+                    if i not in pair_idx and ln.length >= min_len * 0.6))
+
+    return [(ln.coords[0][0], ln.coords[0][1],
+             ln.coords[-1][0], ln.coords[-1][1]) for ln in result]
+
+
+def _snap_ends_to_network(lines: Sequence[LineString], tol: float,
+                          iterations: int = 3) -> List[LineString]:
+    """
+    Притягивает концы отрезков к сети (углы/тавры сходятся в узлах).
+
+    Итеративно: на каждом проходе каждый конец прижимается к ближайшей
+    точке среди (а) концов других отрезков и (б) ортогональных проекций
+    на другие отрезки, если расстояние ≤ tol.  Повтор до стабилизации
+    (максимум iterations проходов) — после первого прижимания соседние
+    концы становятся ближе и схватываются на следующей итерации.
+
+    Висящие концы (дверные/оконные проёмы) остаются как есть — их зашивает
+    _bridge_openings() на следующем шаге.
+    """
+    if tol <= 0 or len(lines) <= 1:
+        return list(lines)
+
+    work = list(lines)
+    for _ in range(iterations):
+        changed = False
+        tree = STRtree(work)
+        new_lines: List[LineString] = []
+
+        for i, ln in enumerate(work):
+            (sx, sy) = ln.coords[0]
+            (ex, ey) = ln.coords[-1]
+
+            for is_start, pt in ((True, (sx, sy)), (False, (ex, ey))):
+                p = Point(pt)
+                best_pt, best_d = None, tol
+                for k in tree.query(p.buffer(tol)):
+                    if k == i:
+                        continue
+                    other = work[k]
+                    # (а) концы других отрезков — точка-точка
+                    for op in (other.coords[0], other.coords[-1]):
+                        d = p.distance(Point(op))
+                        if d < best_d:
+                            best_d = d
+                            best_pt = op
+                    # (б) ортогональная проекция на другой отрезок
+                    proj = other.interpolate(other.project(p))
+                    d = p.distance(proj)
+                    if d < best_d:
+                        best_d = d
+                        best_pt = (proj.x, proj.y)
+                if best_pt is not None:
+                    if is_start:
+                        if (sx, sy) != best_pt:
+                            sx, sy = best_pt
+                            changed = True
+                    else:
+                        if (ex, ey) != best_pt:
+                            ex, ey = best_pt
+                            changed = True
+
+            if (sx, sy) != (ex, ey):
+                new_lines.append(LineString([(sx, sy), (ex, ey)]))
+
+        work = new_lines
+        if not changed or not work:
+            break
+
+    return work
+
+
+def snap_wall_ends(walls: Iterable[Wall], tol: Optional[float] = None) -> List[Wall]:
+    """
+    Публичная обёртка: прижимает концы отрезков к сети (углы/тавры сходятся).
+
+    tol — радиус поиска соседней линии (по умолчанию ~2.5 толщины стены,
+    определённой автоматически).  Висящие концы проёмов не трогаются.
+    """
+    lines = _as_lines(walls)
+    if not lines:
+        return []
+    if tol is None or tol <= 0:
+        thickness, _ = estimate_wall_thickness(lines)
+        tol = max(thickness * 2.5, 0.3) if thickness > 0 else 0.3
+    snapped = _snap_ends_to_network(lines, tol)
+    return [(ln.coords[0][0], ln.coords[0][1],
+             ln.coords[-1][0], ln.coords[-1][1]) for ln in snapped]
+
+
+def _merge_collinear_lines(lines: Sequence[LineString],
+                           angle_tol_deg: float = 3.0,
+                           gap_tol: Optional[float] = None) -> List[LineString]:
+    """
+    Объединяет коллинеарные куски одной стены в один длинный отрезок.
+
+    После схематизации длинная стена, нарисованная в DXF несколькими
+    сегментами (с дверными проёмами, косяками, стыками), остаётся набором
+    коротких осей.  Здесь они группируются по направлению и коллинеарности
+    (транзитивно: кусок может соединять два дальнейших) и сливаются в один
+    отрезок от min до max проекции на общую ось, если суммарный разрыв
+    между кусками не превышает gap_tol (иначе это разные стены на одной
+    линии — например, по разные стороны широкого дверного проёма).
+
+    Возвращает список LineString.
+    """
+    if len(lines) <= 1:
+        return list(lines)
+
+    if gap_tol is None or gap_tol <= 0:
+        ext = _extent(lines)
+        gap_tol = max(ext * 0.002, 0.05)
+
+    # --- транзитивная группировка коллинеарных кусков (BFS по графу соседства)
+    tree = STRtree(lines)
+    groups: List[List[int]] = []
+    assigned: set = set()
+
+    def _on_same_line(a: LineString, b: LineString) -> bool:
+        """b лежит на той же бесконечной линии, что и a (в пределах gap_tol)."""
+        (x1, y1) = a.coords[0]
+        (x2, y2) = a.coords[-1]
+        vx, vy = x2 - x1, y2 - y1
+        ll = vx * vx + vy * vy
+        if ll < 1e-12:
+            return False
+        # расстояние от концов b до бесконечной линии a
+        for p in (b.coords[0], b.coords[-1]):
+            t = ((p[0] - x1) * vx + (p[1] - y1) * vy) / ll
+            px = x1 + vx * t
+            py = y1 + vy * t
+            if math.hypot(p[0] - px, p[1] - py) > gap_tol:
+                return False
+        return True
+
+    for i in range(len(lines)):
+        if i in assigned:
+            continue
+        queue = [i]
+        group: List[int] = []
+        while queue:
+            k = queue.pop()
+            if k in assigned:
+                continue
+            assigned.add(k)
+            group.append(k)
+            ln_k = lines[k]
+            ang_k = _line_angle(ln_k)
+            for j in tree.query(ln_k.buffer(gap_tol * 3.0)):
+                if j in assigned or j == k:
+                    continue
+                other = lines[j]
+                ang_j = _line_angle(other)
+                # минимальная разница направлений без учёта ориентации:
+                # параллельность 0°..180° -> угол 0, перпендикуляр -> 90°
+                d_ang = abs((ang_k - ang_j + math.pi / 2) % math.pi - math.pi / 2)
+                if d_ang > math.radians(angle_tol_deg):
+                    continue
+                if not _on_same_line(ln_k, other):
+                    continue
+                queue.append(j)
+        groups.append(group)
+
+    # --- слияние каждой группы в один отрезок (если разрыв невелик)
+    out: List[LineString] = []
+    for group in groups:
+        if len(group) == 1:
+            out.append(lines[group[0]])
+            continue
+
+        base = lines[group[0]]
+        (x1, y1) = base.coords[0]
+        (x2, y2) = base.coords[-1]
+        ux, uy = x2 - x1, y2 - y1
+        length = math.hypot(ux, uy)
+        if length < 1e-12:
+            out.extend(lines[idx] for idx in group)
+            continue
+        ux /= length
+        uy /= length
+        nx, ny = -uy, ux
+
+        # интервалы [t_start, t_end] каждого куска на общей оси
+        intervals: List[Tuple[float, float]] = []
+        offsets: List[float] = []
+        for idx in group:
+            ln = lines[idx]
+            p0 = ln.coords[0]
+            p1 = ln.coords[-1]
+            t0 = (p0[0] - x1) * ux + (p0[1] - y1) * uy
+            t1 = (p1[0] - x1) * ux + (p1[1] - y1) * uy
+            intervals.append((min(t0, t1), max(t0, t1)))
+            mid = ln.interpolate(0.5, normalized=True)
+            offsets.append((mid.x - x1) * nx + (mid.y - y1) * ny)
+
+        # суммарный разрыв между интервалами > gap_tol*1.5 => разные стены
+        # (микро-зазоры после snap сливаются, широкий дверной проём — нет)
+        intervals.sort()
+        merged_t: List[Tuple[float, float]] = []
+        for a, b in intervals:
+            if not merged_t or a > merged_t[-1][1] + gap_tol * 1.5:
+                merged_t.append([a, b])
+            else:
+                merged_t[-1][1] = max(merged_t[-1][1], b)
+        merged_t = [(a, b) for a, b in merged_t]
+
+        if len(merged_t) > 1:
+            out.extend(lines[idx] for idx in group)
+            continue
+
+        off = sum(offsets) / len(offsets)
+        t_min = merged_t[0][0]
+        t_max = merged_t[0][1]
+        p1 = (x1 + ux * t_min + nx * off, y1 + uy * t_min + ny * off)
+        p2 = (x1 + ux * t_max + nx * off, y1 + uy * t_max + ny * off)
+        out.append(LineString([p1, p2]))
+
+    return out
+
+
+def merge_collinear_segments(walls: Iterable[Wall],
+                             angle_tol_deg: float = 3.0,
+                             gap_tol: Optional[float] = None) -> List[Wall]:
+    """
+    Публичная обёртка: объединяет коллинеарные куски одной стены в один
+    отрезок.  Возвращает список стен в формате (x1, y1, x2, y2).
+    """
+    lines = _as_lines(walls)
+    if not lines:
+        return []
+    merged = _merge_collinear_lines(lines, angle_tol_deg, gap_tol)
+    return [(ln.coords[0][0], ln.coords[0][1],
+             ln.coords[-1][0], ln.coords[-1][1]) for ln in merged]
+
+
+def _drop_junk(lines: Sequence[LineString], min_length: float, tol: float) -> List[LineString]:
+    """
+    Удаляет короткий мусор: изолированные обрезки (круги нумерации, балки,
+    обрывки размерных линий) и короткие висячие хвосты.  Короткий отрезок,
+    у которого ОБА конца касаются других линий, — это косяк/перемычка/окно,
+    он сохраняется (двери и окна должны учитываться).
+    """
+    if len(lines) <= 1:
+        return [ln for ln in lines if ln.length >= min_length * 0.3]
+
+    hard_min = max(min_length * 0.35, 0.08)
+    tree = STRtree(lines)
+    keep: List[LineString] = []
+    radius = max(tol * 2.0, hard_min * 0.5)
+
+    for i, ln in enumerate(lines):
+        if ln.length < hard_min:
+            continue
+        if ln.length >= min_length:
+            keep.append(ln)
+            continue
+        # короткий отрезок: держим только если он что-то соединяет
+        n_start = 0
+        n_end = 0
+        for k in tree.query(ln.buffer(radius)):
+            if k == i:
+                continue
+            d1 = Point(ln.coords[0]).distance(lines[k])
+            d2 = Point(ln.coords[-1]).distance(lines[k])
+            if d1 <= radius:
+                n_start += 1
+            if d2 <= radius:
+                n_end += 1
+        if n_start > 0 and n_end > 0:
+            keep.append(ln)
+    return keep
+
+
+def cleanup_segments(walls: Iterable[Wall],
+                     min_length: Optional[float] = None,
+                     snap_tol: Optional[float] = None) -> List[Wall]:
+    """
+    Чистка схемы после схематизации:
+
+      * выбрасывает дубликаты;
+      * склеивает коллинеарные отрезки, соприкасающиеся концами;
+      * **объединяет коллинеарные куски одной стены в один длинный отрезок**
+        (длинная стена, нарисованная в DXF несколькими сегментами, становится
+        одной стеной; куски по разные стороны широкого дверного проёма не
+        склеиваются — это разные стены);
+      * удаляет очень короткие обрезки;
+      * удаляет изолированные и короткие висячие хвосты (балки, круги
+        нумерации, размерные линии), сохраняя косяки/окна/перемычки.
+
+    Возвращает список стен в формате (x1, y1, x2, y2).
+    """
+    lines = _as_lines(walls)
+    if not lines:
+        return []
+
+    if min_length is None or min_length <= 0:
+        ext = _extent(lines)
+        min_length = max(ext * 0.005, 0.2)
+    grid = snap_tol or max(min_length * 0.25, 1e-6)
+
+    # 1. дубликаты
+    lines = _dedupe(lines, grid)
+    if not lines:
+        return []
+
+    # 2. склейка коллинеарных касающихся отрезков (unary_union сам сливает)
+    try:
+        merged = unary_union(lines)
+    except Exception:
+        merged = None
+    if merged is None or merged.is_empty:
+        return []
+    try:
+        merged = shapely.set_precision(merged, grid_size=grid)
+    except Exception:
+        pass
+    lines = [ln for ln in _flatten_lines(merged) if ln.length >= 1e-9]
+    if not lines:
+        return []
+
+    # 2.5. объединяем коллинеарные куски одной стены в один длинный отрезок.
+    # Порог зазора — половина min_length: стены по разные стороны широкого
+    # дверного проёма остаются раздельными.
+    lines = _merge_collinear_lines(lines, gap_tol=max(min_length * 0.5, grid * 2.0))
+
+    # 3. выбрасываем мусор
+    lines = _drop_junk(lines, min_length, grid)
+
+    return [(ln.coords[0][0], ln.coords[0][1],
+             ln.coords[-1][0], ln.coords[-1][1]) for ln in lines]
 
 
 # ======================= режим thin =======================

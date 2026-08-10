@@ -21,15 +21,20 @@ class Room:
         self.color = color
         self.room_type = room_type
         self.name = name if name else f"Комната {room_id+1}"
+        self.priority = False          # приоритетная уборка (звёздочка)
+        self.disabled = False          # не назначать уборку
     def to_dict(self):
         return {'id':self.id, 'points':self.points, 'area_m2':self.area_m2,
                 'traffic':self.traffic, 'color':self.color, 'room_type':self.room_type,
-                'name':self.name}
+                'name':self.name, 'priority':self.priority, 'disabled':self.disabled}
     @classmethod
     def from_dict(cls, data):
-        return cls(data['id'], data['points'], data['area_m2'], data['traffic'],
-                   tuple(data.get('color', (255,0,0,50))),
-                   data.get('room_type', ""), data.get('name', ""))
+        r = cls(data['id'], data['points'], data['area_m2'], data['traffic'],
+                tuple(data.get('color', (255,0,0,50))),
+                data.get('room_type', ""), data.get('name', ""))
+        r.priority = data.get('priority', False)
+        r.disabled = data.get('disabled', False)
+        return r
 
 class Floor:
     def __init__(self, index: int = 0, name: str = "Этаж 1"):
@@ -95,6 +100,8 @@ class Project:
             Shift("Утро", "08:00", "12:00"),
             Shift("День", "13:00", "17:00")
         ]
+        # Перерывы: список (start, end) в формате "HH:MM"
+        self.breaks: List[Tuple[str, str]] = [("12:00", "13:00")]  # обед по умолчанию
         self.cleaning_tasks: List[CleaningTask] = []
         self.start_date = date.today()
         self.end_date = date.today() + timedelta(days=7)
@@ -138,6 +145,7 @@ class Project:
             'total_area_m2': self.total_area_m2,
             'calibration_line': self.calibration_line,
             'shifts': [{'name': s.name, 'start': s.start_time, 'end': s.end_time} for s in self.shifts],
+            'breaks': [list(b) for b in self.breaks],
             'start_date': self.start_date.isoformat(),
             'end_date': self.end_date.isoformat(),
             'weather_factor': self.weather_factor,
@@ -168,6 +176,8 @@ class Project:
         p.calibration_line = data.get('calibration_line')
         if 'shifts' in data:
             p.shifts = [Shift(s['name'], s['start'], s['end']) for s in data['shifts']]
+        if 'breaks' in data:
+            p.breaks = [(str(b[0]), str(b[1])) for b in data['breaks']]
         if 'start_date' in data:
             p.start_date = date.fromisoformat(data['start_date'])
         if 'end_date' in data:

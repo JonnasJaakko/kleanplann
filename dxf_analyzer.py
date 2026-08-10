@@ -32,11 +32,14 @@ NOISE_KEYWORDS = (
     "лестниц", "stair", "пандус", "площад",
     "элект", "elec", "вент", "hvac", "отоплен", "спринкл",
     "defpoints", "озелен", "благоустр", "мусор",
+    "балк", "beam", "колон", "column", "пилон", "ригел",
 )
 OPENING_KEYWORDS = (
     "двер", "door", "окн", "window", "витраж", "opening", "проем",
 )
-GEOM_TYPES = ("LINE", "LWPOLYLINE", "POLYLINE", "ARC", "CIRCLE", "ELLIPSE", "SPLINE")
+# CIRCLE/ELLIPSE исключены: это маркеры номеров помещений, колонны, мебель,
+# ручки дверей — мусор, который не должен попадать в схему стен.
+GEOM_TYPES = ("LINE", "LWPOLYLINE", "POLYLINE", "ARC", "SPLINE")
 
 
 # ------------------------- классы данных -------------------------

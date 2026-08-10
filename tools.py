@@ -88,6 +88,7 @@ class PlanView(QGraphicsView):
     calibration_finished = Signal(QLineF)
     scene_changed = Signal()
     floor_rect_added = Signal(float, float, float, float)  # x, y, w, h
+    room_context_menu = Signal(object, object)  # (screen_pos, room_id)
 
     def __init__(self, scene, main_window, parent=None):
         super().__init__(scene, parent)
@@ -102,6 +103,7 @@ class PlanView(QGraphicsView):
         self.dragged_vertex = None
         self._snap_distance = 15
         self._highlighted_room = None
+        self._selected_room = None
         self._drag_start_pos = None
         self._panning = False
         self._pan_start = QPointF()
@@ -149,6 +151,10 @@ class PlanView(QGraphicsView):
         self.dragged_vertex = None
         self._drag_start_pos = None
         self._panning = False
+
+    def contextMenuEvent(self, event):
+        """Правый клик на сцене — панорамирование (перемещение по окну)."""
+        event.accept()  # ничего не делаем, обрабатываем в mousePressEvent
 
     def wheelEvent(self, event):
         factor = 1.15
@@ -206,6 +212,34 @@ class PlanView(QGraphicsView):
 
     def highlight_room(self, room_id):
         self._highlight_room(room_id)
+
+    def set_selected_room(self, room_id):
+        """Постоянное выделение комнаты плотной заливкой (клик в таблице)."""
+        default_alpha = 200
+        # сбрасываем предыдущее выделение
+        if self._selected_room is not None:
+            old_room = next((r for r in self.main_window.project.rooms
+                             if r.id == self._selected_room), None)
+            if old_room:
+                col = QColor(*old_room.color)
+                brush = QBrush(col)
+                for item in self.scene().items():
+                    if isinstance(item, QGraphicsPolygonItem) and \
+                       item.data(Qt.UserRole) == self._selected_room:
+                        item.setBrush(brush)
+            self._selected_room = None
+        if room_id is not None:
+            room = next((r for r in self.main_window.project.rooms
+                         if r.id == room_id), None)
+            if room:
+                col = QColor(*room.color[:3])
+                col.setAlpha(default_alpha)
+                brush = QBrush(col)
+                for item in self.scene().items():
+                    if isinstance(item, QGraphicsPolygonItem) and \
+                       item.data(Qt.UserRole) == room_id:
+                        item.setBrush(brush)
+                self._selected_room = room_id
 
     def _highlight_room(self, room_id):
         if self._highlighted_room is not None:

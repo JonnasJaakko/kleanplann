@@ -1,29 +1,27 @@
-from typing import Dict, Any
-from project import Project, Zone
+"""
+Калькулятор стоимости — единая модель трудоёмкости из sanitarnorm.
+
+Использует ТОЛЬКО:
+  sanitarnorm.get_cleaning_time_minutes()
+  sanitarnorm.get_frequency_per_day()
+
+Никакой независимой модели трудоёмкости.
+Никакого SHIFT_HOURS / frequency.
+"""
+from typing import Dict, Any, List, Optional
+from project import Project, Room
 from sanitarnorm import get_cleaning_time_minutes, get_frequency_per_day
 import math
 
-TIME_PER_SQ_M_BASE = 0.05  # часа на м²
-SHIFT_HOURS = 8
+
+def _get_effective_freq(room_type: str, weather: float) -> int:
+    """Возвращает частоту уборки с учётом погодного коэффициента."""
+    freq = get_frequency_per_day(room_type)
+    return max(1, int(round(freq * weather)))
 
 
-def estimate_required_employees(project: Project) -> Dict[str, Any]:
-    """Estimate daily staffing from imported rooms and the configured shifts.
-
-    The calculation deliberately reserves 15% of a shift for moving between
-    rooms, preparation and small unplanned work.  It uses all floors, so the
-    answer remains valid immediately after a multi-floor DXF import.
-    """
-    rooms = project.all_rooms()
-    if not rooms:
-        return {"employees": 1, "daily_minutes": 0.0, "capacity_minutes": 0.0}
-
-    daily_minutes = 0.0
-    for room in rooms:
-        frequency = get_frequency_per_day(room.room_type) * project.weather_factor
-        daily_minutes += get_cleaning_time_minutes(room.room_type, room.area_m2) * frequency
-
-    # A worker can normally work across all configured shifts in a day.
+def _get_shift_minutes(project: Project) -> int:
+    """Доступное время смены с вычетом обеда (минуты)."""
     shift_minutes = 0
     for shift in project.shifts:
         try:
@@ -32,7 +30,36 @@ def estimate_required_employees(project: Project) -> Dict[str, Any]:
             shift_minutes += max(0, (end_h * 60 + end_m) - (start_h * 60 + start_m))
         except (ValueError, AttributeError):
             continue
-    shift_minutes = shift_minutes or int(SHIFT_HOURS * 60)
+    # Вычитаем обеденные перерывы
+    for b_start, b_end in project.breaks:
+        try:
+            bs_h, bs_m = map(int, b_start.split(':'))
+            be_h, be_m = map(int, b_end.split(':'))
+            break_min = max(0, (be_h * 60 + be_m) - (bs_h * 60 + bs_m))
+            shift_minutes = max(0, shift_minutes - break_min)
+        except (ValueError, AttributeError):
+            pass
+    return max(1, shift_minutes or 480)
+
+
+def estimate_required_employees(project: Project) -> Dict[str, Any]:
+    """Оценка минимального количества сотрудников (грубая, без учёта переходов).
+    
+    Учитывает обед (недоступное время).
+    """
+    active = [r for r in project.all_rooms() if not r.disabled]
+    if not active:
+        return {"employees": 1, "daily_minutes": 0.0, "capacity_minutes": 0.0}
+
+    weather = project.weather_factor
+    daily_minutes = 0.0
+    for room in active:
+        freq = _get_effective_freq(room.room_type, weather)
+        time_per = get_cleaning_time_minutes(room.room_type, room.area_m2)
+        daily_minutes += time_per * freq
+
+    shift_minutes = _get_shift_minutes(project)
+    # 15% резерв на переходы
     capacity = max(1.0, shift_minutes * 0.85)
     employees = max(1, math.ceil(daily_minutes / capacity))
     return {
@@ -41,59 +68,82 @@ def estimate_required_employees(project: Project) -> Dict[str, Any]:
         "capacity_minutes": round(capacity, 1),
     }
 
-def _cleaning_frequency(traffic: int, weather_factor: float = 1.0) -> float:
-    base = 3.0
-    if traffic > 30: base = 1.0
-    elif traffic >= 10: base = 2.0
-    return base / weather_factor
-
-def _room_priority(room, mode: str) -> float:
-    if mode == 'traffic': return room.traffic
-    if mode == 'complexity': return 1.0 / (room.area_m2 + 1)
-    return room.area_m2  # area
 
 def calculate_cost(project: Project) -> Dict[str, Any]:
-    rooms_map = {r.id: r for r in project.rooms}
+    """Расчёт стоимости на основе scheduler-результатов.
+    
+    Если cleaning_tasks есть — использует их фактические минуты.
+    Иначе — оценка по sanitarnorm.
+    """
     weather = project.weather_factor
-    total_time = 0.0
-    for zone in project.zones:
-        # время для каждой комнаты в зоне
-        for rid in zone.room_ids:
-            room = rooms_map.get(rid)
-            if room:
-                freq = _cleaning_frequency(room.traffic, weather)
-                cleans_per_shift = SHIFT_HOURS / freq
-                time_per_clean = room.area_m2 * TIME_PER_SQ_M_BASE
-                total_time += time_per_clean * cleans_per_shift
-    staff = project.employees_count
     rate = project.hourly_rate
-    staff_hours = staff * SHIFT_HOURS
-    if total_time <= 0:
-        return {'total_time_hours':0.0,'staff_count':staff,'staff_hours':staff_hours,
-                'overtime_hours':0.0,'cost_with_overtime':0.0,'needed_employees':staff,
-                'cost_hire':staff_hours*rate,'recommendation':'недостаточно данных'}
-    if total_time <= staff_hours:
+    staff = project.employees_count
+
+    # Фактическое время из расписания (если есть)
+    if project.cleaning_tasks:
+        total_minutes = 0.0
+        for task in project.cleaning_tasks:
+            total_minutes += (task.end_dt - task.start_dt).total_seconds() / 60.0
+    else:
+        # Оценка по sanitarnorm
+        active = [r for r in project.all_rooms() if not r.disabled]
+        total_minutes = 0.0
+        for room in active:
+            freq = _get_effective_freq(room.room_type, weather)
+            time_per = get_cleaning_time_minutes(room.room_type, room.area_m2)
+            total_minutes += time_per * freq
+
+    total_hours = total_minutes / 60.0
+    shift_minutes = _get_shift_minutes(project)
+    shift_hours = shift_minutes / 60.0
+    staff_hours = staff * shift_hours
+
+    if total_hours <= 0:
+        return {
+            'total_time_hours': 0.0,
+            'staff_count': staff,
+            'staff_hours': staff_hours,
+            'overtime_hours': 0.0,
+            'cost_with_overtime': 0.0,
+            'needed_employees': staff,
+            'cost_hire': staff_hours * rate,
+            'recommendation': 'недостаточно данных',
+            'total_minutes': 0.0,
+            'shift_hours': shift_hours,
+        }
+
+    # Стоимость с переработкой
+    if total_hours <= staff_hours:
         overtime = 0.0
-        cost_staff = total_time * rate
+        cost_staff = total_hours * rate
     else:
-        overtime = total_time - staff_hours
+        overtime = total_hours - staff_hours
         cost_staff = staff_hours * rate + overtime * rate * 1.5
-    needed_emp = math.ceil(total_time / SHIFT_HOURS)
-    cost_hire = needed_emp * SHIFT_HOURS * rate
-    if staff > needed_emp and needed_emp > 0:
-        savings = cost_staff - (needed_emp * SHIFT_HOURS * rate)
-        recommendation = f"сократить штат до {needed_emp} (экономия {savings:.0f} руб.)"
-    elif total_time <= staff_hours:
+
+    needed_emp = max(1, math.ceil(total_hours / shift_hours)) if shift_hours > 0 else staff
+    cost_hire = needed_emp * shift_hours * rate
+
+    # Рекомендация
+    if needed_emp < staff:
+        savings = (staff * shift_hours * rate) - cost_hire
+        recommendation = f"сократить штат до {needed_emp} (экономия {savings:.0f} руб./день)"
+    elif total_hours <= staff_hours:
         recommendation = "оставить штат"
+    elif needed_emp > staff:
+        hire_more = needed_emp - staff
+        recommendation = f"нанять ещё {hire_more} чел. (до {needed_emp}) — {cost_hire:.0f} руб./день"
     else:
-        recommendation = f"нанять сотрудников до {needed_emp} чел."
+        recommendation = "оставить штат"
+
     return {
-        'total_time_hours': round(total_time, 2),
+        'total_time_hours': round(total_hours, 2),
         'staff_count': staff,
-        'staff_hours': staff_hours,
+        'staff_hours': round(staff_hours, 2),
         'overtime_hours': round(overtime, 2),
         'cost_with_overtime': round(cost_staff, 2),
         'needed_employees': needed_emp,
         'cost_hire': round(cost_hire, 2),
-        'recommendation': recommendation
+        'recommendation': recommendation,
+        'total_minutes': round(total_minutes, 1),
+        'shift_hours': round(shift_hours, 2),
     }
