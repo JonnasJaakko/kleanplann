@@ -2082,7 +2082,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -2691,7 +2691,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 2",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -2827,7 +2827,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 2",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -2962,7 +2962,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 1",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -3308,7 +3308,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -3341,7 +3341,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 2",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -3711,7 +3711,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 34",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -3793,7 +3793,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 1",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -3933,7 +3933,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 41",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -3966,7 +3966,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 41",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -4395,7 +4395,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -4428,7 +4428,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 38",
-          "priority": false,
+          "priority": true,
           "disabled": false
         },
         {
@@ -4747,16 +4747,7 @@
       "name": "Сотрудник 1",
       "room_ids": [
         49,
-        81,
-        25,
-        22,
-        85,
-        20,
-        11,
-        83,
-        29,
-        16,
-        64
+        66
       ],
       "color": [
         230,
@@ -4772,18 +4763,9 @@
       "name": "Сотрудник 2",
       "room_ids": [
         43,
-        77,
-        78,
-        75,
-        74,
-        72,
-        76,
-        71,
-        69,
-        68,
-        38,
-        37,
-        62
+        73,
+        36,
+        30
       ],
       "color": [
         60,
@@ -4799,18 +4781,9 @@
       "name": "Сотрудник 3",
       "room_ids": [
         44,
-        45,
         42,
-        70,
-        39,
-        86,
-        67,
-        41,
-        9,
-        56,
-        3,
-        66,
-        1
+        75,
+        2
       ],
       "color": [
         255,
@@ -4826,17 +4799,9 @@
       "name": "Сотрудник 4",
       "room_ids": [
         19,
-        6,
-        12,
-        5,
-        24,
-        21,
-        10,
-        23,
-        87,
-        26,
-        65,
-        17
+        86,
+        20,
+        13
       ],
       "color": [
         0,
@@ -4852,18 +4817,10 @@
       "name": "Сотрудник 5",
       "room_ids": [
         52,
-        8,
-        40,
-        61,
-        34,
-        31,
+        39,
         35,
         32,
-        36,
-        63,
-        33,
-        30,
-        2
+        64
       ],
       "color": [
         245,
@@ -4879,17 +4836,11 @@
       "name": "Сотрудник 6",
       "room_ids": [
         28,
-        58,
-        7,
-        13,
-        84,
+        41,
+        56,
         15,
-        82,
-        18,
         27,
-        57,
-        55,
-        0
+        17
       ],
       "color": [
         145,
@@ -4905,19 +4856,11 @@
       "name": "Сотрудник 7",
       "room_ids": [
         46,
-        79,
-        48,
-        47,
-        73,
-        80,
-        50,
+        78,
         54,
-        51,
-        53,
-        60,
-        59,
-        14,
-        4
+        72,
+        71,
+        34
       ],
       "color": [
         70,
@@ -4927,9 +4870,178 @@
       ],
       "employee_index": 6,
       "floor_index": 0
+    },
+    {
+      "id": 7,
+      "name": "Сотрудник 8",
+      "room_ids": [
+        6,
+        5,
+        21,
+        24,
+        82,
+        3
+      ],
+      "color": [
+        240,
+        50,
+        230,
+        100
+      ],
+      "employee_index": 7,
+      "floor_index": 0
+    },
+    {
+      "id": 8,
+      "name": "Сотрудник 9",
+      "room_ids": [
+        8,
+        60,
+        9,
+        7,
+        65,
+        63,
+        61
+      ],
+      "color": [
+        210,
+        245,
+        60,
+        100
+      ],
+      "employee_index": 8,
+      "floor_index": 0
+    },
+    {
+      "id": 9,
+      "name": "Сотрудник 10",
+      "room_ids": [
+        58,
+        59,
+        29,
+        57,
+        18,
+        14,
+        26,
+        4
+      ],
+      "color": [
+        250,
+        190,
+        190,
+        100
+      ],
+      "employee_index": 9,
+      "floor_index": 0
+    },
+    {
+      "id": 10,
+      "name": "Сотрудник 11",
+      "room_ids": [
+        79,
+        50,
+        53,
+        51,
+        80,
+        70,
+        33,
+        62
+      ],
+      "color": [
+        0,
+        128,
+        128,
+        100
+      ],
+      "employee_index": 10,
+      "floor_index": 0
+    },
+    {
+      "id": 11,
+      "name": "Сотрудник 12",
+      "room_ids": [
+        48,
+        47,
+        77,
+        76,
+        74,
+        38
+      ],
+      "color": [
+        230,
+        190,
+        255,
+        100
+      ],
+      "employee_index": 11,
+      "floor_index": 0
+    },
+    {
+      "id": 12,
+      "name": "Сотрудник 13",
+      "room_ids": [
+        12,
+        23,
+        10,
+        11,
+        83,
+        87,
+        16,
+        0
+      ],
+      "color": [
+        230,
+        25,
+        75,
+        100
+      ],
+      "employee_index": 12,
+      "floor_index": 0
+    },
+    {
+      "id": 13,
+      "name": "Сотрудник 14",
+      "room_ids": [
+        45,
+        40,
+        68,
+        67,
+        69,
+        31,
+        37
+      ],
+      "color": [
+        60,
+        180,
+        75,
+        100
+      ],
+      "employee_index": 13,
+      "floor_index": 0
+    },
+    {
+      "id": 14,
+      "name": "Сотрудник 15",
+      "room_ids": [
+        81,
+        25,
+        22,
+        85,
+        84,
+        55,
+        1
+      ],
+      "color": [
+        255,
+        225,
+        25,
+        100
+      ],
+      "employee_index": 14,
+      "floor_index": 0
     }
   ],
-  "employees_count": 7,
+  "employees_count": 15,
   "employee_names": [
     "Сотрудник 1",
     "Сотрудник 2",
@@ -4937,9 +5049,17 @@
     "Сотрудник 4",
     "Сотрудник 5",
     "Сотрудник 6",
-    "Сотрудник 7"
+    "Сотрудник 7",
+    "Сотрудник 8",
+    "Сотрудник 9",
+    "Сотрудник 10",
+    "Сотрудник 11",
+    "Сотрудник 12",
+    "Сотрудник 13",
+    "Сотрудник 14",
+    "Сотрудник 15"
   ],
-  "hourly_rate": 200.0,
+  "hourly_rate": 1000.0,
   "total_area_m2": 4000.9999999999363,
   "calibration_line": null,
   "shifts": [
@@ -4961,5 +5081,5 @@
   "priority_mode": "area",
   "is_dxf_loaded": false,
   "created_date": "2026-08-05T02:26:09.652190",
-  "last_modified": "2026-08-11T00:19:42.528664"
+  "last_modified": "2026-08-12T01:48:29.858355"
 }

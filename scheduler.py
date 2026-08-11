@@ -2,27 +2,40 @@
 scheduler — построение расписания уборки.
 
 Основной режим: SINGLE_SHIFT — одна смена одного дня.
-Дополнительный режим: MULTI_DAY — планирование периода (отдельная функция).
 
-Принципы:
-  * использует существующие зоны (не перераспределяет);
-  * уважает floor_index из зон;
-  * каждая комната получает ровно столько уборок, сколько указано в частоте;
-  * если не влезает — комната получает статус UNSCHEDULED с причиной;
-  * не обрезает длительность больших комнат до длины смены;
-  * не создаёт задачи через обед;
-  * не создаёт параллельные задачи одному сотруднику;
-  * не выбрасывает активные помещения молча.
+Алгоритм:
+  1. Для каждого сотрудника собираются все задачи (комната × частота).
+  2. Каждая задача получает "идеальное время" — равномерно распределённое
+     по смене (без застоев и скоплений).
+  3. Задачи сортируются по идеальному времени и планируются последовательно,
+     заполняя смену без больших промежутков.
+  4. Приоритетные комнаты (санузел, коридор, кухня, помеченные вручную)
+     планируются в первую очередь.
 """
 from datetime import datetime, timedelta, time, date
-from typing import List, Tuple, Dict, Optional, Set, Any
+from typing import List, Tuple, Dict, Optional, Set, Any, NamedTuple
 from project import Project, Room, CleaningTask, Shift, Zone
-from sanitarnorm import get_cleaning_time_minutes, get_frequency_per_day, TRANSIT_TIME_MINUTES
+from sanitarnorm import (get_cleaning_time_minutes, get_frequency_per_day,
+                         TRANSIT_TIME_MINUTES, WALKING_SPEED_M_PER_MIN,
+                         MIN_CLEANING_TIME_MINUTES)
 import math
 from collections import defaultdict
 
-WALKING_SPEED_M_PER_MIN = 50.0
 MIN_GAP_BETWEEN_SAME_ROOM = 30
+FLOOR_CHANGE_EXTRA_MINUTES = 5.0
+
+CRITICAL_ROOM_TYPES = {"санузел", "коридор", "кухня"}
+
+
+class CleaningJob(NamedTuple):
+    room_id: int
+    floor_idx: int
+    duration_min: float
+    freq_idx: int
+    total_freq: int
+    priority: bool
+    employee: int
+    critical: bool
 
 
 def _time_to_minutes(t: str) -> int:
@@ -38,24 +51,32 @@ def _room_center(room: Room):
     return (sum(xs) / len(xs), sum(ys) / len(ys))
 
 
-def _transit_minutes(room1: Optional[Room], room2: Optional[Room],
-                     dist_cache: Dict[int, float],
-                     room_centers: Dict[int, Tuple[float, float]]) -> int:
-    """Время перехода между комнатами (мин). Fallback: евклидово расстояние."""
-    if room1 is None or room2 is None:
+def _transit_minutes(key1: Optional[Tuple[int, int]], key2: Optional[Tuple[int, int]],
+                     dist_cache: Dict[Tuple[Tuple[int, int], Tuple[int, int]], float],
+                     room_centers: Dict[Tuple[int, int], Tuple[float, float]]) -> int:
+    if key1 is None or key2 is None:
         return int(TRANSIT_TIME_MINUTES)
-    key = (room1.id, room2.id)
-    if key not in dist_cache:
-        c1 = room_centers[room1.id]
-        c2 = room_centers[room2.id]
-        d = math.hypot(c1[0] - c2[0], c1[1] - c2[1])
-        dist_cache[key] = d
-    d = dist_cache[key]
-    return max(int(TRANSIT_TIME_MINUTES), int(math.ceil(d / WALKING_SPEED_M_PER_MIN)))
+    cache_key = (key1, key2)
+    if cache_key not in dist_cache:
+        c1 = room_centers.get(key1)
+        c2 = room_centers.get(key2)
+        if c1 is None or c2 is None:
+            dist_cache[cache_key] = None
+        else:
+            d = math.hypot(c1[0] - c2[0], c1[1] - c2[1])
+            dist_cache[cache_key] = d
+    d = dist_cache[cache_key]
+    if d is None:
+        base = int(TRANSIT_TIME_MINUTES)
+    else:
+        base = int(math.ceil(d / WALKING_SPEED_M_PER_MIN))
+        base = max(1, base)
+    base = min(base, 5)  # ограничение
+    floor_penalty = FLOOR_CHANGE_EXTRA_MINUTES if key1[0] != key2[0] else 0.0
+    return base + int(math.ceil(floor_penalty))
 
 
 def _get_shift_break_intervals(breaks: List[Tuple[str, str]]) -> List[Tuple[int, int]]:
-    """Возвращает интервалы перерывов в минутах от начала суток."""
     result = []
     for b_start, b_end in breaks:
         try:
@@ -69,243 +90,294 @@ def _get_shift_break_intervals(breaks: List[Tuple[str, str]]) -> List[Tuple[int,
 
 
 def _get_effective_freq(room_type: str, weather: float) -> int:
-    """Частота уборки с учётом погоды. Единая формула для всех подсистем."""
     freq = get_frequency_per_day(room_type)
     return max(1, int(round(freq * weather)))
 
 
-def _find_free_slot(
-    ideal_start: int,
-    duration: float,
-    shift_start: int,
-    shift_end: int,
-    break_intervals: List[Tuple[int, int]],
-    occupied: List[Tuple[int, int]],
-    last_end: Optional[int],
-    min_gap: int,
-) -> Tuple[Optional[int], Optional[int]]:
-    """Ищет свободный слот для задачи.
-
-    Учитывает: ideal_start, duration, shift, перерывы, уже занятые интервалы,
-    last_end той же комнаты, min_gap.
-
-    Возвращает (start_min, end_min) или (None, None) если не влезает.
+def _shift_to_next_free(candidate: int, duration: float, shift_start: int, shift_end: int,
+                        break_intervals: List[Tuple[int, int]],
+                        occupied: List[Tuple[int, int]]) -> Optional[int]:
     """
-    candidate = ideal_start
-
-    # Учитываем last_end той же комнаты
-    if last_end is not None:
-        candidate = max(candidate, last_end + min_gap)
-
-    # Проверяем, не попадает ли candidate на перерыв
+    Находит подходящее время для задачи.
+    Сначала пробует разместить в candidate, затем сдвигает вперёд.
+    Если candidate попадает в перерыв — пробует разместить ДО перерыва
+    (в оставшееся окно), иначе после перерыва.
+    """
+    # Сначала проверяем, попадает ли candidate в перерыв
     for bs, be in sorted(break_intervals):
         if bs <= candidate < be:
+            # Пробуем уместить ДО перерыва
+            # Ищем последнее свободное окно перед bs
+            before = bs - int(duration)
+            if before >= shift_start:
+                # Проверяем, что окно [before, bs) свободно
+                slot_free = True
+                for occ_start, occ_end in occupied:
+                    if before < occ_end and bs > occ_start:
+                        slot_free = False
+                        break
+                if slot_free:
+                    return before
+            # Не помещается до — после перерыва
             candidate = be
+            break
         if candidate < bs and candidate + duration > bs:
+            # Задача заходит на перерыв
+            before = bs - int(duration)
+            if before >= candidate:
+                # Пробуем уместить прямо перед перерывом
+                slot_free = True
+                for occ_start, occ_end in occupied:
+                    if before < occ_end and bs > occ_start:
+                        slot_free = False
+                        break
+                if slot_free:
+                    return before
             candidate = be
+            break
 
-    # Проверяем, не пересекается ли с уже занятыми интервалами
-    max_iter = 1000
-    iter_count = 0
-    while iter_count < max_iter:
-        iter_count += 1
-        overlapped = False
+    max_iter = 5000
+    for _ in range(max_iter):
+        if candidate + duration > shift_end:
+            return None
+        # Проверяем перерывы
+        overlapped_break = False
+        for bs, be in sorted(break_intervals):
+            if bs <= candidate < be:
+                candidate = be
+                overlapped_break = True
+                break
+            if candidate < bs and candidate + duration > bs:
+                candidate = be
+                overlapped_break = True
+                break
+        if overlapped_break:
+            continue
+        # Проверяем занятые интервалы
+        overlapped_occ = False
         for occ_start, occ_end in occupied:
             if candidate < occ_end and candidate + duration > occ_start:
                 candidate = occ_end
-                overlapped = True
+                overlapped_occ = True
                 break
-        if not overlapped:
-            break
-        for bs, be in sorted(break_intervals):
-            if bs <= candidate < be:
-                candidate = be
-            if candidate < bs and candidate + duration > bs:
-                candidate = be
-
-    if candidate + duration > shift_end:
-        # Пробуем от начала смены (для больших комнат)
-        candidate = shift_start
-        if last_end is not None:
-            candidate = max(candidate, last_end + min_gap)
-        for bs, be in sorted(break_intervals):
-            if bs <= candidate < be:
-                candidate = be
-            if candidate < bs and candidate + duration > bs:
-                candidate = be
-        # Проверяем пересечения
-        iter_count = 0
-        while iter_count < max_iter:
-            iter_count += 1
-            overlapped = False
-            for occ_start, occ_end in occupied:
-                if candidate < occ_end and candidate + duration > occ_start:
-                    candidate = occ_end
-                    overlapped = True
-                    break
-            if not overlapped:
-                break
-            for bs, be in sorted(break_intervals):
-                if bs <= candidate < be:
-                    candidate = be
-                if candidate < bs and candidate + duration > bs:
-                    candidate = be
-        if candidate + duration > shift_end:
-            return None, None
-        return candidate, int(candidate + duration)
-
-    return candidate, int(candidate + duration)
+        if overlapped_occ:
+            continue
+        # Свободно
+        return candidate
+    return None
 
 
-def _plan_for_employee_on_day(
+def _build_jobs_for_employee(
     emp_idx: int,
-    rooms: List[Room],
-    shift: Shift,
-    breaks: List[Tuple[str, str]],
+    rooms_with_floor: List[Tuple[int, Room]],
     weather: float,
-    current_date: date,
-    floor_idx: int,
-    room_map: Dict[int, Room],
-    dist_cache: Dict[int, float],
-    room_centers: Dict[int, Tuple[float, float]],
-) -> Tuple[List[CleaningTask], List[Dict[str, Any]]]:
-    """Планирует уборку для одного сотрудника на ОДИН день.
-
-    Возвращает (список задач, список unscheduled-записей).
-    Каждая unscheduled-запись:
-      {
-        "room": [floor_idx, room_id],
-        "room_name": str,
-        "required_minutes": float,
-        "scheduled_minutes": 0.0,
-        "status": "UNSCHEDULED",
-        "reason": "NO_AVAILABLE_TIME"
-      }
-    """
-    if not rooms:
-        return [], []
-
-    unscheduled: List[Dict[str, Any]] = []
-    tasks: List[CleaningTask] = []
-
-    shift_start = _time_to_minutes(shift.start_time)
-    shift_end = _time_to_minutes(shift.end_time)
-    shift_len = shift_end - shift_start
-    break_intervals = _get_shift_break_intervals(breaks)
-
-    # Сортируем комнаты: приоритетные — первыми, затем по близости (TSP)
-    priority_rooms = [r for r in rooms if r.priority]
-    normal_rooms = [r for r in rooms if not r.priority]
-    ordered = (_order_rooms_by_proximity(priority_rooms, room_centers, dist_cache)
-               + _order_rooms_by_proximity(normal_rooms, room_centers, dist_cache))
-
-    # Собираем все требуемые уборки
-    all_cleanings: List[Tuple[int, float, int]] = []
-    for room in ordered:
+) -> List[CleaningJob]:
+    jobs = []
+    for floor_idx, room in rooms_with_floor:
         freq = _get_effective_freq(room.room_type, weather)
         duration = get_cleaning_time_minutes(room.room_type, room.area_m2)
         if duration <= 0:
             continue
+        critical = room.priority or (room.room_type in CRITICAL_ROOM_TYPES)
         for i in range(freq):
-            all_cleanings.append((room.id, duration, i))
+            jobs.append(CleaningJob(
+                room_id=room.id,
+                floor_idx=floor_idx,
+                duration_min=duration,
+                freq_idx=i,
+                total_freq=freq,
+                priority=room.priority,
+                employee=emp_idx,
+                critical=critical,
+            ))
+    return jobs
 
-    total_cleanings = len(all_cleanings)
-    if total_cleanings == 0:
+
+def _compute_ideal_start(job: CleaningJob, shift_start: int, shift_end: int) -> int:
+    """
+    Вычисляет идеальное время начала задачи, равномерно распределённое по смене.
+
+    Для комнаты с частотой N:
+      - 1-я уборка: начало смены
+      - 2-я уборка: середина смены
+      - 3-я уборка: 1/3 и 2/3 смены
+      - и т.д. — равномерно распределяем по смене
+    """
+    span = max(1, shift_end - shift_start)
+    if job.total_freq == 1:
+        # Единственная уборка — в начале смены
+        return shift_start
+    if job.total_freq == 2:
+        # Две уборки: начало и середина
+        if job.freq_idx == 0:
+            return shift_start
+        return shift_start + span // 2
+    # Для 3+ уборок: равномерно распределяем по смене
+    # freq_idx = 0, 1, 2, ... total_freq-1
+    # Позиции: 0, 1/N, 2/N, ..., (N-1)/N
+    fraction = job.freq_idx / max(1, job.total_freq)
+    return shift_start + int(span * fraction)
+
+
+def _plan_jobs_for_employee(
+    jobs: List[CleaningJob],
+    shift: Shift,
+    breaks: List[Tuple[str, str]],
+    current_date: date,
+    room_map: Dict[Tuple[int, int], Room],
+    room_centers: Dict[Tuple[int, int], Tuple[float, float]],
+    dist_cache: Dict[Tuple[Tuple[int, int], Tuple[int, int]], float],
+) -> Tuple[List[CleaningTask], List[Dict[str, Any]]]:
+    if not jobs:
         return [], []
 
-    # Равномерно распределяем ideal_start по смене
-    placements: List[Tuple[int, float, int, int]] = []
-    max_freq = max((_get_effective_freq(r.room_type, weather) for r in ordered), default=1)
-    idx = 0
-    for i in range(max_freq):
-        for room in ordered:
-            freq = _get_effective_freq(room.room_type, weather)
-            if i >= freq:
-                continue
-            duration = get_cleaning_time_minutes(room.room_type, room.area_m2)
-            if duration <= 0:
-                continue
-            ideal_start = shift_start + int((idx + 0.5) * shift_len / total_cleanings)
-            placements.append((room.id, duration, ideal_start, i))
-            idx += 1
+    tasks = []
+    unscheduled = []
 
-    placements.sort(key=lambda p: p[2])
+    shift_start = _time_to_minutes(shift.start_time)
+    shift_end = _time_to_minutes(shift.end_time)
+    break_intervals = _get_shift_break_intervals(breaks)
 
-    occupied: List[Tuple[int, int]] = []  # занятые интервалы (start, end)
-    last_end_by_room: Dict[int, int] = {}
-    scheduled_freq_by_room: Dict[int, int] = defaultdict(int)
+    occupied = []
+    last_end_by_room = {}
+    prev_key = None
 
-    for room_id, duration, ideal_start, freq_idx in placements:
-        room = room_map.get(room_id)
-        room_name = room.name if room else f"Комната {room_id + 1}"
+    # Первые уборки (freq_idx == 0) распределяем равномерно по всей смене,
+    # чтобы не было скопления в начале. Повторные уборки размещаем посередине.
+    anchor_jobs = [j for j in jobs if j.freq_idx == 0]
+    repeat_jobs = [j for j in jobs if j.freq_idx > 0]
 
-        last_end = last_end_by_room.get(room_id)
-        min_gap = MIN_GAP_BETWEEN_SAME_ROOM if last_end is not None else 0
+    # Сортируем первые уборки и присваиваем равномерные идеальные времена
+    n_anchors = len(anchor_jobs)
+    ordered_with_ideal = []
+    for i, job in enumerate(sorted(anchor_jobs, key=lambda j: (0 if j.critical else 1, j.room_id))):
+        # Равномерно распределяем первую уборку по смене
+        if n_anchors > 1:
+            ideal = shift_start + (shift_end - shift_start) * i // n_anchors
+        else:
+            ideal = shift_start
+        ordered_with_ideal.append((ideal, job))
 
-        start_min, end_min = _find_free_slot(
-            ideal_start, duration, shift_start, shift_end,
-            break_intervals, occupied, last_end, min_gap
-        )
+    # Повторные уборки: размещаем после середины смены
+    span = max(1, shift_end - shift_start)
+    for job in repeat_jobs:
+        ideal = _compute_ideal_start(job, shift_start, shift_end)
+        ordered_with_ideal.append((ideal, job))
+
+    # Сортируем по идеальному времени начала
+    ordered = sorted(ordered_with_ideal, key=lambda x: x[0])
+
+    for ideal_start, job in ordered:
+        job_key = (job.floor_idx, job.room_id)
+        room = room_map.get(job_key)
+        room_name = room.name if room else f"Комната {job.room_id + 1}"
+
+        # Для первой задачи нет перехода — начинаем ровно с начала смены
+        if prev_key is None:
+            transit = 0
+        else:
+            transit = _transit_minutes(prev_key, job_key, dist_cache, room_centers)
+        last_end = last_end_by_room.get(job_key)
+
+        # Заполняем смену непрерывно: начинаем следующую задачу сразу после
+        # предыдущей (плюс переход). Идеальное время влияет на ПОРЯДОК задач,
+        # но не создаёт застоев — задачи идут подряд по смене.
+        if occupied:
+            candidate = occupied[-1][1] + transit
+        else:
+            candidate = shift_start
+        if last_end is not None:
+            candidate = max(candidate, last_end + MIN_GAP_BETWEEN_SAME_ROOM)
+
+        start_min = _shift_to_next_free(candidate, job.duration_min, shift_start, shift_end,
+                                        break_intervals, occupied)
 
         if start_min is None:
-            # Комната не влезает — регистрируем UNSCHEDULED
             unscheduled.append({
-                "room": [floor_idx, room_id],
+                "room": [job.floor_idx, job.room_id],
                 "room_name": room_name,
-                "required_minutes": duration,
+                "required_minutes": job.duration_min,
                 "scheduled_minutes": 0.0,
                 "status": "UNSCHEDULED",
-                "reason": "NO_AVAILABLE_TIME",
-                "cleaning_index": freq_idx + 1,
+                "reason": "Не хватает времени в смене",
+                "cleaning_index": job.freq_idx + 1,
+                "critical": job.critical,
             })
             continue
 
+        end_min = start_min + int(job.duration_min)
         start_dt = datetime.combine(current_date, time()) + timedelta(minutes=start_min)
-        end_dt = start_dt + timedelta(minutes=duration)
-        tasks.append(CleaningTask(room_id, floor_idx, start_dt, end_dt, emp_idx))
+        end_dt = datetime.combine(current_date, time()) + timedelta(minutes=end_min)
+
+        tasks.append(CleaningTask(job.room_id, job.floor_idx, start_dt, end_dt, job.employee))
         occupied.append((start_min, end_min))
         occupied.sort(key=lambda x: x[0])
-        last_end_by_room[room_id] = end_min
-        scheduled_freq_by_room[room_id] += 1
+        last_end_by_room[job_key] = end_min
+        prev_key = job_key
 
+    tasks.sort(key=lambda t: t.start_dt)
     return tasks, unscheduled
 
 
-def _order_rooms_by_proximity(rooms: List[Room],
-                              room_centers: Dict[int, Tuple[float, float]],
-                              dist_cache: Dict[int, float]) -> List[Room]:
-    """Жадный TSP (ближайший сосед). Fallback для transit."""
-    if not rooms:
-        return []
-    start = min(rooms, key=lambda r: (room_centers[r.id][0] + room_centers[r.id][1]))
-    ordered = [start]
-    remaining = [r for r in rooms if r is not start]
-    while remaining:
-        cur = ordered[-1]
-        nxt = min(remaining, key=lambda r: _transit_minutes(cur, r, dist_cache, room_centers))
-        ordered.append(nxt)
-        remaining.remove(nxt)
-    return ordered
+def _plan_for_employee_on_day(
+    emp_idx: int,
+    rooms_with_floor: List[Tuple[int, Room]],
+    shift: Shift,
+    breaks: List[Tuple[str, str]],
+    weather: float,
+    current_date: date,
+    room_map: Dict[Tuple[int, int], Room],
+    dist_cache: Dict[Tuple[Tuple[int, int], Tuple[int, int]], float],
+    room_centers: Dict[Tuple[int, int], Tuple[float, float]],
+) -> Tuple[List[CleaningTask], List[Dict[str, Any]]]:
+    jobs = _build_jobs_for_employee(emp_idx, rooms_with_floor, weather)
+    return _plan_jobs_for_employee(jobs, shift, breaks, current_date,
+                                   room_map, room_centers, dist_cache)
 
 
-def _build_room_map(project: Project) -> Dict[int, Room]:
-    result = {}
-    for floor in project.floors:
+def _build_room_map_global(project: Project) -> Dict[Tuple[int, int], Room]:
+    return {(fi, room.id): room
+            for fi, floor in enumerate(project.floors) for room in floor.rooms}
+
+
+def _build_room_centers_global(project: Project) -> Dict[Tuple[int, int], Tuple[float, float]]:
+    return {(fi, room.id): _room_center(room)
+            for fi, floor in enumerate(project.floors) for room in floor.rooms}
+
+
+def _build_zones_per_floor(project: Project, emp_count: int) -> List[Zone]:
+    from zone_manager import manual_distribution
+    zones = []
+    zone_id = 0
+    for fi, floor in enumerate(project.floors):
+        floor_active = [r for r in floor.rooms if not r.disabled]
+        if not floor_active:
+            continue
+        percents = [100.0 / emp_count] * emp_count
+        floor_zones = manual_distribution(floor_active, percents)
+        for z in floor_zones:
+            z.id = zone_id
+            zone_id += 1
+            z.floor_index = fi
+            zones.append(z)
+    return zones
+
+
+def _collect_unzoned_rooms_by_floor(project: Project) -> Dict[int, List[Room]]:
+    zoned_by_floor = defaultdict(set)
+    for zone in project.zones:
+        zoned_by_floor[zone.floor_index].update(zone.room_ids)
+    result = defaultdict(list)
+    for fi, floor in enumerate(project.floors):
         for room in floor.rooms:
-            result[room.id] = room
-    return result
-
-
-def _build_room_centers(project: Project) -> Dict[int, Tuple[float, float]]:
-    result = {}
-    for floor in project.floors:
-        for room in floor.rooms:
-            result[room.id] = _room_center(room)
+            if room.disabled:
+                continue
+            if room.id not in zoned_by_floor[fi]:
+                result[fi].append(room)
     return result
 
 
 def _get_shift_minutes(shift: Shift, breaks: List[Tuple[str, str]]) -> int:
-    """Доступное время смены с вычетом обеда (минуты)."""
     try:
         start = _time_to_minutes(shift.start_time)
         end = _time_to_minutes(shift.end_time)
@@ -316,7 +388,6 @@ def _get_shift_minutes(shift: Shift, breaks: List[Tuple[str, str]]) -> int:
         try:
             bs = _time_to_minutes(b_start)
             be = _time_to_minutes(b_end)
-            # Пересечение перерыва со сменой
             overlap = max(0, min(end, be) - max(start, bs))
             shift_len = max(0, shift_len - overlap)
         except (ValueError, AttributeError):
@@ -330,50 +401,11 @@ def schedule_single_shift(
     employees: Optional[int] = None,
     allow_partial_schedule: bool = False,
 ) -> Dict[str, Any]:
-    """Планирует ОДНУ смену ОДНОГО дня.
-
-    Основной режим работы scheduler.
-
-    Args:
-        project: проект
-        target_date: дата смены (по умолчанию project.start_date)
-        employees: количество сотрудников (по умолчанию project.employees_count)
-        allow_partial_schedule: разрешить частичное расписание
-
-    Returns:
-        Словарь с полным результатом:
-        {
-            "date": "2026-08-05",
-            "shift_start": "09:00",
-            "shift_end": "18:00",
-            "break_start": "12:00",
-            "break_end": "13:00",
-            "feasible": bool,
-            "employees": int,
-            "active_rooms": int,
-            "scheduled_rooms": int,
-            "unscheduled_rooms": int,
-            "required_cleanings": int,
-            "scheduled_cleanings": int,
-            "missed_cleanings": int,
-            "cleaning_minutes": float,
-            "transit_minutes": float,
-            "total_workload_minutes": float,
-            "available_minutes": float,
-            "capacity_deficit": float,
-            "tasks": List[CleaningTask],
-            "unscheduled_rooms_list": [...],
-            "violations": {...},
-        }
-    """
     if target_date is None:
         target_date = project.start_date
 
     all_rooms = project.all_rooms()
     active_rooms = [r for r in all_rooms if not r.disabled]
-    room_map = _build_room_map(project)
-    room_centers = _build_room_centers(project)
-    dist_cache: Dict[int, float] = {}
 
     if not project.shifts:
         return {
@@ -387,74 +419,54 @@ def schedule_single_shift(
 
     emp_count = max(1, employees if employees is not None else project.employees_count)
 
-    # Собираем комнаты по зонам: (emp_idx, floor_idx) -> [Room]
-    emp_floor_rooms: Dict[Tuple[int, int], List[Room]] = defaultdict(list)
+    print(f"[scheduler] режим: ONE_DAY")
+    print(f"[scheduler] дата: {target_date.isoformat()}")
+    print(f"[scheduler] комнаты: {len(active_rooms)}")
+    print(f"[scheduler] сотрудников: {emp_count}")
+    print(f"[scheduler] смена: {shift.start_time}-{shift.end_time}")
+    if breaks:
+        print(f"[scheduler] обед: {breaks[0][0]}-{breaks[0][1]}")
 
-    # Если employees задан явно и отличается от project.employees_count —
-    # пересоздаём зоны для нового количества сотрудников (режим staffing).
-    # Если employees не задан — используем существующие зоны.
+    # Строим зоны для заданного количества сотрудников
     if employees is not None and employees != project.employees_count:
-        from zone_manager import manual_distribution
-        percents = [100.0 / emp_count] * emp_count
-        project.zones = manual_distribution(active_rooms, percents)
-        for zone in project.zones:
-            for rid in zone.room_ids:
-                for fi, floor in enumerate(project.floors):
-                    for room in floor.rooms:
-                        if room.id == rid:
-                            zone.floor_index = fi
-                            break
-                else:
-                    zone.floor_index = 0
+        project.zones = _build_zones_per_floor(project, emp_count)
     elif not project.zones:
-        from zone_manager import manual_distribution
-        percents = [100.0 / emp_count] * emp_count
-        project.zones = manual_distribution(active_rooms, percents)
-        for zone in project.zones:
-            for rid in zone.room_ids:
-                for fi, floor in enumerate(project.floors):
-                    for room in floor.rooms:
-                        if room.id == rid:
-                            zone.floor_index = fi
-                            break
-                else:
-                    zone.floor_index = 0
+        project.zones = _build_zones_per_floor(project, emp_count)
 
+    emp_rooms = defaultdict(list)
     for zone in project.zones:
         emp = zone.employee_index
         fi = zone.floor_index
         if fi < len(project.floors):
             for room in project.floors[fi].rooms:
                 if room.id in zone.room_ids and not room.disabled:
-                    emp_floor_rooms[(emp, fi)].append(room)
+                    emp_rooms[emp].append((fi, room))
 
-    # Комнаты без зон — распределяем поровну
-    zoned_rooms: Set[int] = set()
-    for zone in project.zones:
-        zoned_rooms.update(zone.room_ids)
-    unzoned = [r for r in active_rooms if r.id not in zoned_rooms]
-    if unzoned:
-        for i, room in enumerate(unzoned):
+    unzoned_by_floor = _collect_unzoned_rooms_by_floor(project)
+    for fi, rooms_on_floor in unzoned_by_floor.items():
+        for i, room in enumerate(rooms_on_floor):
             emp = i % emp_count
-            for fi, floor in enumerate(project.floors):
-                if room in floor.rooms:
-                    emp_floor_rooms[(emp, fi)].append(room)
-                    break
+            emp_rooms[emp].append((fi, room))
 
-    all_tasks: List[CleaningTask] = []
-    all_unscheduled: List[Dict[str, Any]] = []
+    room_map = _build_room_map_global(project)
+    room_centers = _build_room_centers_global(project)
+    dist_cache = {}
 
-    for (emp, fi), rooms in emp_floor_rooms.items():
-        if not rooms:
+    all_tasks = []
+    all_unscheduled = []
+
+    for emp, rooms_with_floor in emp_rooms.items():
+        if not rooms_with_floor:
             continue
         emp_tasks, emp_unscheduled = _plan_for_employee_on_day(
-            emp, rooms, shift, breaks, weather,
-            target_date, fi, room_map, dist_cache, room_centers
+            emp, rooms_with_floor, shift, breaks, weather,
+            target_date, room_map, dist_cache, room_centers,
         )
         all_tasks.extend(emp_tasks)
         all_unscheduled.extend(emp_unscheduled)
 
-    # Считаем статистику
+    all_tasks.sort(key=lambda t: (t.employee, t.start_dt))
+
     scheduled_room_keys = {(t.floor_index, t.room_id) for t in all_tasks}
     scheduled_rooms = len(scheduled_room_keys)
     active_room_keys = set()
@@ -465,36 +477,31 @@ def schedule_single_shift(
 
     unscheduled_room_keys = active_room_keys - scheduled_room_keys
 
-    # Требуемые уборки
     required_cleanings = 0
     for room in active_rooms:
         required_cleanings += _get_effective_freq(room.room_type, weather)
     scheduled_cleanings = len(all_tasks)
     missed_cleanings = max(0, required_cleanings - scheduled_cleanings)
 
-    # Трудоёмкость
     cleaning_minutes = sum(
         (t.end_dt - t.start_dt).total_seconds() / 60.0 for t in all_tasks
     )
 
-    # Transit: оцениваем как разницу между workload и cleaning
-    # (в задачах transit не хранится отдельно, поэтому оцениваем)
     transit_minutes = 0.0
     for emp in set(t.employee for t in all_tasks):
-        emp_tasks = sorted([t for t in all_tasks if t.employee == emp], key=lambda t: t.start_dt)
+        emp_tasks = [t for t in all_tasks if t.employee == emp]
+        emp_tasks.sort(key=lambda t: t.start_dt)
         for i in range(len(emp_tasks) - 1):
             gap = (emp_tasks[i + 1].start_dt - emp_tasks[i].end_dt).total_seconds() / 60.0
             if gap > 0:
-                transit_minutes += min(gap, 10.0)  # не более 10 мин на переход
+                transit_minutes += min(gap, 10.0)
 
     total_workload_minutes = cleaning_minutes + transit_minutes
 
-    # Доступное время
     shift_minutes = _get_shift_minutes(shift, breaks)
     available_minutes = emp_count * shift_minutes
     capacity_deficit = max(0.0, total_workload_minutes - available_minutes)
 
-    # Валидация
     from schedule_validator import validate_schedule
     project.cleaning_tasks = all_tasks
     validation = validate_schedule(project)
@@ -509,6 +516,27 @@ def schedule_single_shift(
 
     if not feasible and not allow_partial_schedule:
         feasible = False
+
+    employee_loads = {}
+    for emp in sorted(set(t.employee for t in all_tasks)):
+        emp_tasks = [t for t in all_tasks if t.employee == emp]
+        emp_tasks.sort(key=lambda t: t.start_dt)
+        emp_clean = sum((t.end_dt - t.start_dt).total_seconds() / 60.0 for t in emp_tasks)
+        emp_transit = 0.0
+        for i in range(len(emp_tasks) - 1):
+            gap = (emp_tasks[i + 1].start_dt - emp_tasks[i].end_dt).total_seconds() / 60.0
+            if gap > 0:
+                emp_transit += min(gap, 10.0)
+        idle = max(0.0, shift_minutes - emp_clean - emp_transit)
+        util = (emp_clean + emp_transit) / shift_minutes * 100.0 if shift_minutes > 0 else 0.0
+        employee_loads[emp] = {
+            "cleaning_minutes": round(emp_clean, 1),
+            "transit_minutes": round(emp_transit, 1),
+            "idle_minutes": round(idle, 1),
+            "total_work_minutes": round(emp_clean + emp_transit, 1),
+            "available_minutes": shift_minutes,
+            "utilization_percent": round(util, 1),
+        }
 
     return {
         "date": target_date.isoformat(),
@@ -527,10 +555,12 @@ def schedule_single_shift(
         "cleaning_minutes": round(cleaning_minutes, 1),
         "cleaning_hours": round(cleaning_minutes / 60.0, 2),
         "transit_minutes": round(transit_minutes, 1),
+        "idle_minutes": round(max(0.0, available_minutes - total_workload_minutes), 1),
         "total_workload_minutes": round(total_workload_minutes, 1),
         "total_workload_hours": round(total_workload_minutes / 60.0, 2),
         "available_minutes": available_minutes,
         "capacity_deficit": round(capacity_deficit, 1),
+        "employee_loads": employee_loads,
         "tasks": all_tasks,
         "unscheduled_rooms_list": all_unscheduled,
         "violations": {
@@ -548,18 +578,10 @@ def plan_cleaning_schedule(
     fixed_employees: Optional[int] = None,
     max_days: Optional[int] = None,
 ) -> List[CleaningTask]:
-    """MULTI_DAY режим: генерирует расписание на период (start_date — end_date).
-
-    Отдельный режим, вызывается явно. По умолчанию используется schedule_single_shift.
-    """
+    # MULTI_DAY режим (не используется в основном сценарии, но оставлен для совместимости)
     all_rooms = project.all_rooms()
     active_rooms = [r for r in all_rooms if not r.disabled]
-    room_map = _build_room_map(project)
-    room_centers = _build_room_centers(project)
-    dist_cache: Dict[int, float] = {}
-
     if not project.shifts:
-        print("[scheduler] Нет настроек смены")
         return []
     shift = project.shifts[0]
     breaks = project.breaks
@@ -575,92 +597,16 @@ def plan_cleaning_schedule(
 
     employees = max(1, fixed_employees if fixed_employees is not None else project.employees_count)
 
-    emp_floor_rooms: Dict[Tuple[int, int], List[Room]] = defaultdict(list)
-
-    if not project.zones:
-        from zone_manager import manual_distribution
-        percents = [100.0 / employees] * employees
-        project.zones = manual_distribution(active_rooms, percents)
-        for zone in project.zones:
-            for rid in zone.room_ids:
-                for fi, floor in enumerate(project.floors):
-                    for room in floor.rooms:
-                        if room.id == rid:
-                            zone.floor_index = fi
-                            break
-                else:
-                    zone.floor_index = 0
-
-    for zone in project.zones:
-        emp = zone.employee_index
-        fi = zone.floor_index
-        if fi < len(project.floors):
-            for room in project.floors[fi].rooms:
-                if room.id in zone.room_ids and not room.disabled:
-                    emp_floor_rooms[(emp, fi)].append(room)
-
-    zoned_rooms: Set[int] = set()
-    for zone in project.zones:
-        zoned_rooms.update(zone.room_ids)
-    unzoned = [r for r in active_rooms if r.id not in zoned_rooms]
-    if unzoned:
-        for i, room in enumerate(unzoned):
-            emp = i % employees
-            for fi, floor in enumerate(project.floors):
-                if room in floor.rooms:
-                    emp_floor_rooms[(emp, fi)].append(room)
-                    break
-
-    all_tasks: List[CleaningTask] = []
-    all_warnings: List[str] = []
-
+    all_tasks = []
     for day_offset in range(num_days):
         current_date = start_date + timedelta(days=day_offset)
-
-        for (emp, fi), rooms in emp_floor_rooms.items():
-            if not rooms:
-                continue
-            emp_tasks, emp_unscheduled = _plan_for_employee_on_day(
-                emp, rooms, shift, breaks, weather,
-                current_date, fi, room_map, dist_cache, room_centers
-            )
-            all_tasks.extend(emp_tasks)
-            for u in emp_unscheduled:
-                all_warnings.append(
-                    f"Комната {u['room_name']} (№{u['room'][1] + 1}), "
-                    f"уборка #{u['cleaning_index']}: {u['reason']}"
-                )
-
-    total_load = sum(
-        get_cleaning_time_minutes(r.room_type, r.area_m2) * _get_effective_freq(r.room_type, weather)
-        for r in active_rooms
-    )
-    print(f"[scheduler] начало: {len(active_rooms)} комнат, {employees} сотрудников, "
-          f"смена {shift.start_time}-{shift.end_time}, "
-          f"суммарная нагрузка {total_load:.0f} мин ≈ {total_load / 60:.0f} ч, "
-          f"период: {num_days} дн.")
-
-    if all_warnings:
-        print(f"[scheduler] предупреждения ({len(all_warnings)}):")
-        for w in all_warnings[:10]:
-            print(f"  ⚠ {w}")
-        if len(all_warnings) > 10:
-            print(f"  ... и ещё {len(all_warnings) - 10}")
-
+        result = schedule_single_shift(project, target_date=current_date, employees=employees, allow_partial_schedule=True)
+        all_tasks.extend(result["tasks"])
     project.cleaning_tasks = all_tasks
-
-    covered = len({t.room_id for t in all_tasks})
-    print(f"[scheduler] готово: {len(all_tasks)} задач, {covered}/{len(active_rooms)} комнат, "
-          f"{num_days} дн.")
     return all_tasks
 
 
 def compute_recommended_employees(project: Project) -> int:
-    """Вычисляет минимальное количество сотрудников (грубая оценка)."""
-    all_rooms = project.all_rooms()
-    active = [r for r in all_rooms if not r.disabled]
-    if not active or not project.shifts:
-        return 1
     from cost_calculator import estimate_required_employees
     rough = estimate_required_employees(project)
     return rough["employees"]

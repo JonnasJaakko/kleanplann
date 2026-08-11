@@ -231,13 +231,39 @@ def generate_report(project: Project, filepath: str):
     # ---------- Анализ затрат ----------
     from cost_calculator import calculate_cost
     cost = calculate_cost(project)
+
+    # Validator результат (используем те же данные scheduler)
+    from schedule_validator import validate_schedule
+    v = validate_schedule(project)
+
     doc.add_heading('Анализ затрат', level=1)
-    doc.add_paragraph(f"Общее время уборки: {cost['total_time_hours']} ч")
+    doc.add_paragraph(f"Общее время уборки (scheduler): {cost['total_time_hours']} ч")
     doc.add_paragraph(f"Штат: {cost['staff_count']} чел., фонд времени: {cost['staff_hours']} ч")
     doc.add_paragraph(f"Переработка: {cost['overtime_hours']} ч")
     doc.add_paragraph(f"Затраты (штат с переработкой): {cost['cost_with_overtime']} руб.")
     doc.add_paragraph(f"Затраты (наём): {cost['cost_hire']} руб.")
     doc.add_paragraph(f"Рекомендация: {cost['recommendation']}")
+
+    doc.add_heading('Валидация расписания', level=2)
+    doc.add_paragraph(f"Статус: {'✓ ВЫПОЛНИМО' if v['valid'] else '✗ НЕВЫПОЛНИМО'}")
+    doc.add_paragraph(f"Комнат всего: {v['rooms_total']}, активных: {v['active_rooms']}, "
+                      f"запланировано: {v['scheduled_rooms']}, не запланировано: {v['unscheduled_rooms']}")
+    doc.add_paragraph(f"Задач всего: {v['tasks_total']}")
+    doc.add_paragraph(f"Конфликтов времени: {v['time_conflicts']}")
+    doc.add_paragraph(f"Нарушений обеда: {v['break_violations']}")
+    doc.add_paragraph(f"Задач вне смены: {v['out_of_shift_tasks']}")
+    doc.add_paragraph(f"Нарушений частоты: {v['frequency_violations']} "
+                      f"(требуется {v['frequency_required']}, запланировано {v['frequency_scheduled']})")
+    doc.add_paragraph(f"Трудоёмкость: {v['cleaning_minutes']} мин уборки, "
+                      f"{v['transit_minutes']} мин переходов, всего {v['total_hours']} ч")
+    doc.add_paragraph(f"Стоимость (по validator): {v['cost']} руб., переработка: {v['overtime_minutes']} мин")
+
+    if v['missed_rooms']:
+        doc.add_heading('Не запланированные помещения', level=2)
+        for m in v['missed_rooms'][:20]:
+            doc.add_paragraph(f"• {m}", style='List Bullet')
+        if len(v['missed_rooms']) > 20:
+            doc.add_paragraph(f"... и ещё {len(v['missed_rooms']) - 20}")
 
     doc.save(filepath)
 

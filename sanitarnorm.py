@@ -1,12 +1,18 @@
 """
 Нормативы уборки — расчёт времени по формуле: время = площадь × база × коэффициент.
+С прогрессивным смягчением для больших площадей.
 
-Базовая норма: 1 минута на 1 квадратный метр (изменяемый параметр).
+Реальные нормативы:
+  - 1 человек способен убрать ~500 кв.м за смену (8 часов)
+  - Коридор 60 кв.м ≈ 25 минут
+  - Кабинет 60 кв.м ≈ 20 минут
 """
 from typing import Dict, List, Tuple
 
-# Базовая норма времени уборки (мин/м²) — изменяемый параметр
-BASE_TIME_PER_SQ_M = 1.0  # 1 минута на 1 кв.м
+# Базовая норма времени уборки (мин/м²) — 0.4 мин/кв.м
+# Коридор 60 м²: 60 × 0.4 × 1.0 = 24 мин (≈25)
+# Кабинет 60 м²: 60 × 0.4 × 0.8 = 19.2 мин (≈20)
+BASE_TIME_PER_SQ_M = 0.4
 
 # Коэффициенты сложности по типам помещений
 COMPLEXITY_FACTOR: Dict[str, float] = {
@@ -14,7 +20,7 @@ COMPLEXITY_FACTOR: Dict[str, float] = {
     "санузел": 1.8,
     "склад": 0.8,
     "зал": 1.2,
-    "кабинет": 1.0,
+    "кабинет": 0.8,
     "кухня": 1.5
 }
 
@@ -29,7 +35,7 @@ DEFAULT_FREQUENCY_PER_DAY: Dict[str, int] = {
 }
 
 # Допустимое время на перемещение между зонами (минут)
-TRANSIT_TIME_MINUTES = 2.0
+TRANSIT_TIME_MINUTES = 1.0
 
 # Скорость перемещения уборщика (метров в минуту)
 WALKING_SPEED_M_PER_MIN = 50.0
@@ -46,6 +52,17 @@ DEFAULT_TRAFFIC_PER_TYPE: Dict[str, int] = {
 
 # Дополнительное время на уборку санузла (минут) — сверх формулы
 SANITARY_BONUS_MINUTES = 10
+
+# Минимальное время уборки любой комнаты (минут)
+MIN_CLEANING_TIME_MINUTES = 5.0
+
+# ──────────────────────────────────────────────
+# Прогрессивная шкала смягчения для больших помещений
+# ──────────────────────────────────────────────
+SOFTENING_THRESHOLD_M2 = 30.0       # первая ступень смягчения
+SOFTENING_RATE = 0.5                # для площадей от 30 до 100 м²
+SOFTENING_THRESHOLD_2_M2 = 100.0    # вторая ступень
+SOFTENING_RATE_2 = 0.3              # для площадей > 100 м²
 
 
 # ──────────────────────────────────────────────
@@ -72,22 +89,35 @@ def validate_room_data(area_m2: float, complexity: float, frequency: int) -> Non
 
 
 # ──────────────────────────────────────────────
-# Расчёт времени уборки
+# Расчёт времени уборки (прогрессивная шкала)
 # ──────────────────────────────────────────────
 
 def get_cleaning_time_minutes(room_type: str, area_m2: float) -> float:
-    """Время одной уборки помещения (минут).
+    """
+    Время одной уборки помещения (минут) с прогрессивным смягчением.
 
-    Формула: Площадь × BASE_TIME_PER_SQ_M × Коэффициент сложности.
-    Для санузла добавляется SANITARY_BONUS_MINUTES сверху.
+    Для площадей до SOFTENING_THRESHOLD_M2 используется линейная формула.
+    Для больших площадей применяется понижающий коэффициент:
+      - от 30 до 100 м²: SOFTENING_RATE (0.5)
+      - свыше 100 м²: SOFTENING_RATE_2 (0.3)
     """
     if area_m2 <= 0:
         return 0.0
     factor = COMPLEXITY_FACTOR.get(room_type, 1.0)
-    base = area_m2 * BASE_TIME_PER_SQ_M * factor
+
+    if area_m2 <= SOFTENING_THRESHOLD_M2:
+        base = area_m2 * BASE_TIME_PER_SQ_M * factor
+    elif area_m2 <= SOFTENING_THRESHOLD_2_M2:
+        base = (SOFTENING_THRESHOLD_M2 * BASE_TIME_PER_SQ_M * factor +
+                (area_m2 - SOFTENING_THRESHOLD_M2) * BASE_TIME_PER_SQ_M * factor * SOFTENING_RATE)
+    else:
+        base = (SOFTENING_THRESHOLD_M2 * BASE_TIME_PER_SQ_M * factor +
+                (SOFTENING_THRESHOLD_2_M2 - SOFTENING_THRESHOLD_M2) * BASE_TIME_PER_SQ_M * factor * SOFTENING_RATE +
+                (area_m2 - SOFTENING_THRESHOLD_2_M2) * BASE_TIME_PER_SQ_M * factor * SOFTENING_RATE_2)
+
     if room_type == "санузел":
         base += SANITARY_BONUS_MINUTES
-    return base
+    return max(MIN_CLEANING_TIME_MINUTES, base)
 
 
 def get_frequency_per_day(room_type: str) -> int:

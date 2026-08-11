@@ -59,8 +59,8 @@ def estimate_required_employees(project: Project) -> Dict[str, Any]:
         daily_minutes += time_per * freq
 
     shift_minutes = _get_shift_minutes(project)
-    # 15% резерв на переходы
-    capacity = max(1.0, shift_minutes * 0.85)
+    # 20% резерв на переходы и непредвиденные задержки
+    capacity = max(1.0, shift_minutes * 0.8)
     employees = max(1, math.ceil(daily_minutes / capacity))
     return {
         "employees": employees,
