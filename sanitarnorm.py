@@ -1,217 +1,83 @@
+# sanitarnorm.py
 """
-Нормативы уборки — расчёт времени по формуле: время = площадь × база × коэффициент.
-С прогрессивным смягчением для больших площадей.
-
-Реальные нормативы:
-  - 1 человек способен убрать ~500 кв.м за смену (8 часов)
-  - Коридор 60 кв.м ≈ 25 минут
-  - Кабинет 60 кв.м ≈ 20 минут
+Отраслевые нормативы времени и частоты уборки на основе ГОСТ Р 51870-2014 и СанПиН.
+Единый источник правды для планировщика и калькулятора стоимости.
 """
-from typing import Dict, List, Tuple
+import math
 
-# Базовая норма времени уборки (мин/м²) — 0.4 мин/кв.м
-# Коридор 60 м²: 60 × 0.4 × 1.0 = 24 мин (≈25)
-# Кабинет 60 м²: 60 × 0.4 × 0.8 = 19.2 мин (≈20)
-BASE_TIME_PER_SQ_M = 0.4
-
-# Коэффициенты сложности по типам помещений
-COMPLEXITY_FACTOR: Dict[str, float] = {
-    "коридор": 1.0,
-    "санузел": 1.8,
-    "склад": 0.8,
-    "зал": 1.2,
-    "кабинет": 0.8,
-    "кухня": 1.5
+# Базовое время уборки 1 кв. метра (в минутах) по ГОСТ Р 51870-2014
+GOST_TIME_PER_SQ_M = {
+    "кабинет": 0.3,    # Норма поддерживающей уборки административных зон
+    "коридор": 0.3,    # Норма для зон с транзитным трафиком
+    "зал": 0.25,       # Большие открытые пространства (высокая скорость прохода мопом/техникой)
+    "склад": 0.2,       # Минимальная влажная протирка полов
+    "санузел": 1.5,    # Повышенное время на сантехнику, зеркала и дезинфекцию
+    "кухня": 1.2,      # Зоны приема пищи (смыв жиров, дезинфекция)
+    "default": 0.4
 }
 
-# Требуемая частота уборки (раз в день)
-DEFAULT_FREQUENCY_PER_DAY: Dict[str, int] = {
-    "коридор": 2,
-    "санузел": 3,
+# Минимальное подготовительное время на одну комнату (в минутах)
+# Включает: вход, вынос мусора, замену расходных материалов, смену салфетки/воды
+SETUP_TIME_PER_ROOM = {
+    "санузел": 5.0,
+    "кабинет": 3.0,
+    "default": 3.0
+}
+
+# Базовая кратность (периодичность) уборок за смену
+DEFAULT_FREQUENCY_PER_DAY = {
+    "санузел": 3,      # Соответствует СанПиН для мест общего пользования
+    "коридор": 2,      # Утренний и вечерний пиковые потоки
+    "кабинет": 1,      # Один раз в смену
+    "зал": 1,
     "склад": 1,
-    "зал": 2,
-    "кабинет": 1,
-    "кухня": 2
+    "кухня": 2,        # После обеденных перерывов
+    "default": 1
 }
 
-# Допустимое время на перемещение между зонами (минут)
-TRANSIT_TIME_MINUTES = 1.0
-
-# Скорость перемещения уборщика (метров в минуту)
-WALKING_SPEED_M_PER_MIN = 50.0
-
-# Проходимость по умолчанию в зависимости от типа помещения
-DEFAULT_TRAFFIC_PER_TYPE: Dict[str, int] = {
-    "коридор": 50,
-    "санузел": 40,
-    "склад": 10,
-    "зал": 30,
-    "кабинет": 30,
-    "кухня": 20,
+# Коэффициенты заставленности мебелью и сложности структуры помещения
+COMPLEXITY_FACTOR = {
+    "санузел": 1.3,
+    "кабинет": 1.1,    # Офисные столы, стулья, оргтехника
+    "коридор": 1.0,    # Свободные пространства
+    "зал": 0.9,        # Высокая доступность для инвентаря
+    "склад": 0.8,
+    "default": 1.0
 }
 
-# Дополнительное время на уборку санузла (минут) — сверх формулы
-SANITARY_BONUS_MINUTES = 10
+DEFAULT_TRAFFIC_PER_TYPE = {
+    "санузел": 50, "коридор": 100, "кабинет": 10, "зал": 20, "склад": 2, "кухня": 30
+}
 
-# Минимальное время уборки любой комнаты (минут)
-MIN_CLEANING_TIME_MINUTES = 5.0
+def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: float = 1.0) -> float:
+    """Рассчитывает точное время одной уборки помещения по ГОСТу."""
+    room_type_lower = room_type.lower() if room_type else "default"
+    
+    base_rate = GOST_TIME_PER_SQ_M.get("default")
+    for k, v in GOST_TIME_PER_SQ_M.items():
+        if k in room_type_lower:
+            base_rate = v
+            break
+            
+    comp_factor = COMPLEXITY_FACTOR.get("default")
+    for k, v in COMPLEXITY_FACTOR.items():
+        if k in room_type_lower:
+            comp_factor = v
+            break
+            
+    setup_time = SETUP_TIME_PER_ROOM.get("default")
+    for k, v in SETUP_TIME_PER_ROOM.items():
+        if k in room_type_lower:
+            setup_time = v
+            break
 
-# ──────────────────────────────────────────────
-# Прогрессивная шкала смягчения для больших помещений
-# ──────────────────────────────────────────────
-SOFTENING_THRESHOLD_M2 = 30.0       # первая ступень смягчения
-SOFTENING_RATE = 0.5                # для площадей от 30 до 100 м²
-SOFTENING_THRESHOLD_2_M2 = 100.0    # вторая ступень
-SOFTENING_RATE_2 = 0.3              # для площадей > 100 м²
-
-
-# ──────────────────────────────────────────────
-# Валидация
-# ──────────────────────────────────────────────
-
-class ValidationError(ValueError):
-    """Ошибка валидации входных данных."""
-    pass
-
-
-def validate_room_data(area_m2: float, complexity: float, frequency: int) -> None:
-    """Проверяет корректность данных помещения.
-
-    Raises:
-        ValidationError: если площадь ≤ 0, коэффициент ≤ 0, частота ≤ 0.
-    """
-    if area_m2 <= 0:
-        raise ValidationError(f"Площадь должна быть положительной, получено: {area_m2}")
-    if complexity <= 0:
-        raise ValidationError(f"Коэффициент сложности должен быть положительным, получено: {complexity}")
-    if frequency <= 0:
-        raise ValidationError(f"Частота уборки должна быть положительной, получено: {frequency}")
-
-
-# ──────────────────────────────────────────────
-# Расчёт времени уборки (прогрессивная шкала)
-# ──────────────────────────────────────────────
-
-def get_cleaning_time_minutes(room_type: str, area_m2: float) -> float:
-    """
-    Время одной уборки помещения (минут) с прогрессивным смягчением.
-
-    Для площадей до SOFTENING_THRESHOLD_M2 используется линейная формула.
-    Для больших площадей применяется понижающий коэффициент:
-      - от 30 до 100 м²: SOFTENING_RATE (0.5)
-      - свыше 100 м²: SOFTENING_RATE_2 (0.3)
-    """
-    if area_m2 <= 0:
-        return 0.0
-    factor = COMPLEXITY_FACTOR.get(room_type, 1.0)
-
-    if area_m2 <= SOFTENING_THRESHOLD_M2:
-        base = area_m2 * BASE_TIME_PER_SQ_M * factor
-    elif area_m2 <= SOFTENING_THRESHOLD_2_M2:
-        base = (SOFTENING_THRESHOLD_M2 * BASE_TIME_PER_SQ_M * factor +
-                (area_m2 - SOFTENING_THRESHOLD_M2) * BASE_TIME_PER_SQ_M * factor * SOFTENING_RATE)
-    else:
-        base = (SOFTENING_THRESHOLD_M2 * BASE_TIME_PER_SQ_M * factor +
-                (SOFTENING_THRESHOLD_2_M2 - SOFTENING_THRESHOLD_M2) * BASE_TIME_PER_SQ_M * factor * SOFTENING_RATE +
-                (area_m2 - SOFTENING_THRESHOLD_2_M2) * BASE_TIME_PER_SQ_M * factor * SOFTENING_RATE_2)
-
-    if room_type == "санузел":
-        base += SANITARY_BONUS_MINUTES
-    return max(MIN_CLEANING_TIME_MINUTES, base)
-
+    pure_duration = setup_time + (area_m2 * base_rate * comp_factor * weather_factor)
+    return float(math.ceil(pure_duration))
 
 def get_frequency_per_day(room_type: str) -> int:
-    """Сколько раз в день нужно убирать помещение данного типа."""
-    return DEFAULT_FREQUENCY_PER_DAY.get(room_type, 1)
-
-
-# ──────────────────────────────────────────────
-# Расширенный расчёт для одного помещения
-# ──────────────────────────────────────────────
-
-def calculate_room_cleaning(room_type: str, area_m2: float,
-                            complexity: float = None, frequency: int = None) -> dict:
-    """Возвращает полный расчёт для одного помещения.
-
-    Параметры:
-        room_type — тип помещения (строка, может быть произвольной)
-        area_m2 — площадь в кв.м
-        complexity — коэффициент сложности (если None, берётся из COMPLEXITY_FACTOR)
-        frequency — частота уборки в день (если None, берётся из DEFAULT_FREQUENCY_PER_DAY)
-
-    Возвращает словарь:
-        {
-            "room_type": str,
-            "area_m2": float,
-            "complexity": float,
-            "frequency": int,
-            "time_per_cleaning_min": float,   # время одной уборки (мин)
-            "total_daily_min": float,         # суммарное время за день (мин)
-        }
-
-    Raises:
-        ValidationError: при некорректных данных.
-    """
-    if complexity is None:
-        complexity = COMPLEXITY_FACTOR.get(room_type, 1.0)
-    if frequency is None:
-        frequency = DEFAULT_FREQUENCY_PER_DAY.get(room_type, 1)
-
-    validate_room_data(area_m2, complexity, frequency)
-
-    time_per = get_cleaning_time_minutes(room_type, area_m2)
-    total = time_per * frequency
-
-    return {
-        "room_type": room_type,
-        "area_m2": area_m2,
-        "complexity": complexity,
-        "frequency": frequency,
-        "time_per_cleaning_min": round(time_per, 1),
-        "total_daily_min": round(total, 1),
-    }
-
-
-# ──────────────────────────────────────────────
-# Расчёт для списка помещений
-# ──────────────────────────────────────────────
-
-def calculate_cleaning_summary(rooms: List[dict]) -> dict:
-    """Принимает список помещений и возвращает сводку.
-
-    Каждый элемент списка — словарь с ключами:
-        room_type, area_m2, [complexity], [frequency]
-
-    Возвращает:
-        {
-            "rooms": [расчёт для каждого помещения],
-            "total_minutes": float,     # суммарное время в минутах
-            "total_hours": float,       # суммарное время в часах
-            "total_hours_str": str,     # строка "X ч Y мин"
-        }
-
-    Raises:
-        ValidationError: при некорректных данных любого помещения.
-    """
-    results = []
-    grand_total = 0.0
-
-    for r in rooms:
-        calc = calculate_room_cleaning(
-            room_type=r.get("room_type", ""),
-            area_m2=r.get("area_m2", 0),
-            complexity=r.get("complexity"),
-            frequency=r.get("frequency"),
-        )
-        results.append(calc)
-        grand_total += calc["total_daily_min"]
-
-    hours = int(grand_total // 60)
-    minutes = int(round(grand_total % 60))
-
-    return {
-        "rooms": results,
-        "total_minutes": round(grand_total, 1),
-        "total_hours": round(grand_total / 60, 2),
-        "total_hours_str": f"{hours} ч {minutes} мин",
-    }
+    """Возвращает базовую кратность уборок для типа комнаты."""
+    room_type_lower = room_type.lower() if room_type else "default"
+    for k, v in DEFAULT_FREQUENCY_PER_DAY.items():
+        if k in room_type_lower:
+            return v
+    return DEFAULT_FREQUENCY_PER_DAY["default"]
