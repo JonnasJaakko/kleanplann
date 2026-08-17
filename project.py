@@ -43,13 +43,15 @@ class Floor:
         self.walls: List[Wall] = []
         self.rooms: List[Room] = []
         self.total_area_m2: float = 0.0   # новое поле
+        self.image_path: str = ""
     def to_dict(self):
         return {
             'index': self.index,
             'name': self.name,
             'walls': [w.to_dict() for w in self.walls],
             'rooms': [r.to_dict() for r in self.rooms],
-            'total_area_m2': self.total_area_m2
+            'total_area_m2': self.total_area_m2,
+            'image_path': self.image_path
         }
     @classmethod
     def from_dict(cls, data):
@@ -57,6 +59,7 @@ class Floor:
         f.walls = [Wall.from_dict(w) for w in data.get('walls', [])]
         f.rooms = [Room.from_dict(r) for r in data.get('rooms', [])]
         f.total_area_m2 = data.get('total_area_m2', 0.0)
+        f.image_path = data.get('image_path', '')
         return f
 
 class Zone:
@@ -80,9 +83,20 @@ class Shift:
         self.name = name; self.start_time = start_time; self.end_time = end_time
 
 class CleaningTask:
-    def __init__(self, room_id: int, floor_index: int, start_dt: datetime, end_dt: datetime, employee: int = 0):
-        self.room_id = room_id; self.floor_index = floor_index
-        self.start_dt = start_dt; self.end_dt = end_dt; self.employee = employee
+    def __init__(self, room_id: int, floor_index: int, start_dt: datetime,
+                 end_dt: datetime, employee: int = 0,
+                 is_overtime: bool = False, transit_after_minutes: int = 0,
+                 priority: bool = False):
+        self.room_id = room_id
+        self.floor_index = floor_index
+        self.start_dt = start_dt
+        self.end_dt = end_dt
+        self.employee = employee
+        # Дополнительные поля сохраняют совместимость со старым кодом:
+        # старые вызовы с пятью аргументами продолжают работать.
+        self.is_overtime = bool(is_overtime)
+        self.transit_after_minutes = int(max(0, transit_after_minutes))
+        self.priority = bool(priority)
 
 class Project:
     def __init__(self, name:str="Новый проект"):
@@ -94,6 +108,10 @@ class Project:
         self.employees_count = 1
         self.employee_names: List[str] = ["Сотрудник 1"]
         self.hourly_rate = 200.0
+        self.overtime_premium_percent = 50.0
+        self.cleaning_type = "поддерживающая"
+        self.overtime_premium_percent = 50.0
+        self.cleaning_type = "поддерживающая"
         self.total_area_m2 = 0.0
         self.calibration_line = None
         self.shifts: List[Shift] = [
@@ -128,8 +146,11 @@ class Project:
         return self.floors[self.current_floor_index]
     def all_rooms(self) -> List[Room]:
         rooms = []
-        for floor in self.floors:
-            rooms.extend(floor.rooms)
+        for fi, floor in enumerate(self.floors):
+            for room in floor.rooms:
+                # Технический атрибут нужен для многoэтажного зонирования.
+                room.floor_index = fi
+                rooms.append(room)
         return rooms
 
     def to_dict(self):
@@ -142,6 +163,10 @@ class Project:
             'employees_count': self.employees_count,
             'employee_names': self.employee_names,
             'hourly_rate': self.hourly_rate,
+            'overtime_premium_percent': self.overtime_premium_percent,
+            'cleaning_type': self.cleaning_type,
+            'overtime_premium_percent': self.overtime_premium_percent,
+            'cleaning_type': self.cleaning_type,
             'total_area_m2': self.total_area_m2,
             'calibration_line': self.calibration_line,
             'shifts': [{'name': s.name, 'start': s.start_time, 'end': s.end_time} for s in self.shifts],
@@ -172,6 +197,10 @@ class Project:
         p.employees_count = data.get('employees_count', 1)
         p.employee_names = data.get('employee_names', [f"Сотрудник {i+1}" for i in range(p.employees_count)])
         p.hourly_rate = data.get('hourly_rate', 200.0)
+        p.overtime_premium_percent = float(data.get('overtime_premium_percent', 50.0))
+        p.cleaning_type = data.get('cleaning_type', 'поддерживающая')
+        p.overtime_premium_percent = float(data.get('overtime_premium_percent', 50.0))
+        p.cleaning_type = data.get('cleaning_type', 'поддерживающая')
         p.total_area_m2 = data.get('total_area_m2', 0.0)
         p.calibration_line = data.get('calibration_line')
         if 'shifts' in data:

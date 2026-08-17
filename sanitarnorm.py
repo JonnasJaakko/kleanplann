@@ -49,7 +49,7 @@ DEFAULT_TRAFFIC_PER_TYPE = {
     "санузел": 50, "коридор": 100, "кабинет": 10, "зал": 20, "склад": 2, "кухня": 30
 }
 
-def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: float = 1.0) -> float:
+def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: float = 1.0, cleaning_type: str = "поддерживающая") -> float:
     """Рассчитывает точное время одной уборки помещения по ГОСТу."""
     room_type_lower = room_type.lower() if room_type else "default"
     
@@ -71,7 +71,9 @@ def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: fl
             setup_time = v
             break
 
-    pure_duration = setup_time + (area_m2 * base_rate * comp_factor * weather_factor)
+    # Генеральная уборка: коэффициенты сложности/трудоёмкости удваиваются.
+    cleaning_multiplier = 2.0 if str(cleaning_type).strip().lower() == "генеральная" else 1.0
+    pure_duration = setup_time * cleaning_multiplier + (area_m2 * base_rate * comp_factor * weather_factor * cleaning_multiplier)
     return float(math.ceil(pure_duration))
 
 def get_frequency_per_day(room_type: str) -> int:

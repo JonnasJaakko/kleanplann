@@ -1,0 +1,8 @@
+TEST: 5 EMPLOYEES / 88 ROOMS
+tasks=133, required=133, overtime=13.0
+valid=True, zones=0, frequency=0, transitions=0, repeats=0
+employee=1: cleaning=470.0, transit=37, overtime=0, idle=33.0
+employee=2: cleaning=385.0, transit=38, overtime=13.0, idle=117.0
+employee=3: cleaning=379.0, transit=22, overtime=0, idle=139.0
+employee=4: cleaning=391.0, transit=37, overtime=0, idle=112.0
+employee=5: cleaning=391.0, transit=34, overtime=0, idle=115.0

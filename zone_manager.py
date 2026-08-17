@@ -69,7 +69,7 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
     for r in rooms:
         freq = sanitarnorm.get_frequency_per_day(r.room_type)
         time_per_clean = sanitarnorm.get_cleaning_time_minutes(r.room_type, r.area_m2)
-        room_time_weights[r.id] = (time_per_clean + 2.5) * freq
+        room_time_weights[id(r)] = (time_per_clean + 2.5) * freq
 
     total_time_load = sum(room_time_weights.values())
     total_area = sum(r.area_m2 for r in rooms)
@@ -80,7 +80,7 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
     target_area = total_area / employees
     target_count = len(rooms) / employees
     
-    centers = {r.id: _room_center(r) for r in rooms}
+    centers = {id(r): _room_center(r) for r in rooms}
     xs = [c[0] for c in centers.values() if c]
     ys = [c[1] for c in centers.values() if c]
     _extent_scale = max(1.0, (max(xs) - min(xs)) + (max(ys) - min(ys))) if xs else 1.0
@@ -90,7 +90,7 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
     elif priority == PRIORITY_COUNT:
         pool = sorted(rooms, key=lambda r: r.id)
     else:
-        pool = sorted(rooms, key=lambda r: room_time_weights[r.id], reverse=True)
+        pool = sorted(rooms, key=lambda r: room_time_weights[id(r)], reverse=True)
         
     zones: List[List[Room]] = [[] for _ in range(employees)]
     emp_toilet_counts = {i: 0 for i in range(employees)}
@@ -106,7 +106,7 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
     while remaining:
         best_emp, best_short = 0, -1e18
         for i in range(employees):
-            cur_time = sum(room_time_weights[r.id] for r in zones[i])
+            cur_time = sum(room_time_weights[id(r)] for r in zones[i])
             cur_area = sum(r.area_m2 for r in zones[i])
             cur_count = len(zones[i])
             
@@ -124,9 +124,9 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
             if short > best_short:
                 best_short, best_emp = short, i
 
-        cur_time = sum(room_time_weights[r.id] for r in zones[best_emp])
+        cur_time = sum(room_time_weights[id(r)] for r in zones[best_emp])
         cur_area = sum(r.area_m2 for r in zones[best_emp])
-        centroid = _zone_centroid([centers[r.id] for r in zones[best_emp]])
+        centroid = _zone_centroid([centers[id(r)] for r in zones[best_emp]])
 
         chosen_room = None
         valid_rooms = []
@@ -140,17 +140,17 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
         if not valid_rooms: valid_rooms = remaining
 
         if priority == PRIORITY_PROXIMITY:
-            chosen_room = min(valid_rooms, key=lambda r: _dist(centroid, centers[r.id]) if centroid else 0.0)
+            chosen_room = min(valid_rooms, key=lambda r: _dist(centroid, centers[id(r)]) if centroid else 0.0)
         elif priority == PRIORITY_AREA:
             chosen_room = max(valid_rooms, key=lambda r: r.area_m2)
         elif priority == PRIORITY_COUNT:
             chosen_room = valid_rooms[0]
         else:  # BALANCED
             def _score(r):
-                t_score = abs((cur_time + room_time_weights[r.id]) - target_time_load) / max(1.0, target_time_load)
+                t_score = abs((cur_time + room_time_weights[id(r)]) - target_time_load) / max(1.0, target_time_load)
                 a_score = abs((cur_area + r.area_m2) - target_area) / max(1.0, target_area)
                 c_score = abs((len(zones[best_emp]) + 1) - target_count) / max(1.0, target_count)
-                d_score = (_dist(centroid, centers[r.id]) if centroid else 0.0) / max(1.0, _extent_scale)
+                d_score = (_dist(centroid, centers[id(r)]) if centroid else 0.0) / max(1.0, _extent_scale)
                 return t_score * 0.3 + a_score * 0.3 + c_score * 0.2 + d_score * 0.2
             chosen_room = min(valid_rooms, key=_score)
 
@@ -160,11 +160,22 @@ def manual_distribution(rooms: List[Room], percentages: List[float],
         zones[best_emp].append(chosen_room)
         remaining.remove(chosen_room)
 
+    # Один сотрудник может отвечать за несколько этажей. Поэтому зона
+    # хранится отдельно для каждой пары (сотрудник, этаж), иначе одинаковые
+    # номера комнат на разных этажах становятся неоднозначными.
     result: List[Zone] = []
+    zone_id = 0
     for emp_idx, emp_rooms in enumerate(zones):
-        if not emp_rooms: continue
+        if not emp_rooms:
+            continue
+        by_floor = {}
+        for room in emp_rooms:
+            fi = int(getattr(room, "floor_index", 0))
+            by_floor.setdefault(fi, []).append(room)
         color = ZONE_COLORS[emp_idx % len(ZONE_COLORS)]
-        result.append(Zone(emp_idx, f"Сотрудник {emp_idx+1}",
-                           [r.id for r in emp_rooms], color=color,
-                           employee_index=emp_idx))
+        for fi, floor_rooms in sorted(by_floor.items()):
+            result.append(Zone(zone_id, f"Сотрудник {emp_idx+1} — этаж {fi+1}",
+                               [r.id for r in floor_rooms], color=color,
+                               employee_index=emp_idx, floor_index=fi))
+            zone_id += 1
     return result
