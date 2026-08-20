@@ -18,7 +18,7 @@ def export_tasks_csv(project: Project, filename: str):
         writer.writerow(["Проект", project.name])
         writer.writerow(["Погода", {1.0:'Ясно',1.2:'Дождь',1.5:'Снег',1.8:'Сильный дождь'}.get(project.weather_factor, '—')])
         writer.writerow(["Тип уборки", getattr(project, 'cleaning_type', 'поддерживающая')])
-        writer.writerow(["Надбавка за переработку, %", getattr(project, 'overtime_premium_percent', 50)])
+        writer.writerow(["Вид оплаты", getattr(project,'salary_type','hour')]); writer.writerow(["Значение оплаты", getattr(project,'salary_value',getattr(project,'hourly_rate',200))]); writer.writerow(["Вид надбавки", getattr(project,'overtime_type','percent')]); writer.writerow(["Значение надбавки", getattr(project,'overtime_value',50)])
         writer.writerow(["Стоимость", cost['cost_with_overtime']])
         writer.writerow([])
         writer.writerow(["Сотрудник", "Этаж", "Комната", "Тип", "Площадь (м²)", "Начало", "Окончание", "Продолжительность (мин)", "Статус"])
@@ -46,7 +46,7 @@ def export_tasks_excel(project: Project, filename: str):
     ws.append(["Проект", project.name])
     ws.append(["Тип уборки", getattr(project, 'cleaning_type', 'поддерживающая')])
     ws.append(["Погода", {1.0:'Ясно',1.2:'Дождь',1.5:'Снег',1.8:'Сильный дождь'}.get(project.weather_factor, '—')])
-    ws.append(["Надбавка за переработку, %", getattr(project, 'overtime_premium_percent', 50)])
+    ws.append(["Вид оплаты", getattr(project,'salary_type','hour')]); ws.append(["Значение оплаты", getattr(project,'salary_value',getattr(project,'hourly_rate',200))]); ws.append(["Вид надбавки", getattr(project,'overtime_type','percent')]); ws.append(["Значение надбавки", getattr(project,'overtime_value',50)])
     ws.append(["Стоимость", cost['cost_with_overtime']])
     ws.append([])
     headers=["Сотрудник","Этаж","Комната","Тип","Площадь (м²)","Начало","Окончание","Продолжительность (мин)","Статус"]

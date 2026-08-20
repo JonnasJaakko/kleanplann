@@ -7,7 +7,8 @@
       "name": "Этаж 1",
       "walls": [],
       "rooms": [],
-      "total_area_m2": 0.0
+      "total_area_m2": 0.0,
+      "image_path": ""
     },
     {
       "index": 1,
@@ -8798,7 +8799,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 34"
+          "name": "Комната 34",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 1,
@@ -8829,7 +8833,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 34"
+          "name": "Комната 34",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 2,
@@ -8860,7 +8867,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 34"
+          "name": "Комната 34",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 3,
@@ -8891,7 +8901,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 4,
@@ -8922,7 +8935,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 5,
@@ -8953,7 +8969,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 6,
@@ -8984,7 +9003,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 7,
@@ -9015,7 +9037,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 83"
+          "name": "Комната 83",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 8,
@@ -9046,7 +9071,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 9,
@@ -9077,7 +9105,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 10,
@@ -9108,7 +9139,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 45"
+          "name": "Комната 45",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 11,
@@ -9139,7 +9173,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 114"
+          "name": "Комната 114",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 12,
@@ -9170,7 +9207,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 113"
+          "name": "Комната 113",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 13,
@@ -9201,7 +9241,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 14,
@@ -9232,7 +9275,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 15,
@@ -9263,7 +9309,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 16,
@@ -9298,7 +9347,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 17,
@@ -9329,7 +9381,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 18,
@@ -9360,7 +9415,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 19,
@@ -9391,7 +9449,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 20,
@@ -9422,7 +9483,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 21,
@@ -9465,7 +9529,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 22,
@@ -9496,7 +9563,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 23,
@@ -9527,7 +9597,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 24,
@@ -9558,7 +9631,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 25,
@@ -9589,7 +9665,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 26,
@@ -9620,7 +9699,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 27,
@@ -9651,7 +9733,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 28,
@@ -9682,7 +9767,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 29,
@@ -9713,7 +9801,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 30,
@@ -9744,7 +9835,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 31,
@@ -9775,7 +9869,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 32,
@@ -9806,7 +9903,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 33,
@@ -9837,7 +9937,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 34,
@@ -9868,7 +9971,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 35,
@@ -9899,7 +10005,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 36,
@@ -9930,7 +10039,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 37,
@@ -9961,7 +10073,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 38,
@@ -9992,7 +10107,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 39,
@@ -10047,7 +10165,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 40,
@@ -10094,7 +10215,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 41,
@@ -10125,7 +10249,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 42,
@@ -10156,7 +10283,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 43,
@@ -10187,7 +10317,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 44,
@@ -10218,7 +10351,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 45,
@@ -10249,7 +10385,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 46,
@@ -10280,7 +10419,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 47,
@@ -10311,7 +10453,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 48,
@@ -10366,7 +10511,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 49,
@@ -10397,7 +10545,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 8"
+          "name": "Комната 8",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 50,
@@ -10428,7 +10579,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 111"
+          "name": "Комната 111",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 51,
@@ -10459,7 +10613,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 109"
+          "name": "Комната 109",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 52,
@@ -10490,7 +10647,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 38"
+          "name": "Комната 38",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 53,
@@ -10521,7 +10681,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 54,
@@ -10552,7 +10715,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 55,
@@ -10583,7 +10749,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 56,
@@ -10614,7 +10783,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 57,
@@ -10645,7 +10817,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 58,
@@ -10676,7 +10851,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 59,
@@ -10707,7 +10885,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 60,
@@ -10738,7 +10919,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 89"
+          "name": "Комната 89",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 61,
@@ -10769,7 +10953,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 62,
@@ -10800,7 +10987,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 63,
@@ -10831,7 +11021,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 87"
+          "name": "Комната 87",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 64,
@@ -10862,7 +11055,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 89"
+          "name": "Комната 89",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 65,
@@ -10893,7 +11089,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 87"
+          "name": "Комната 87",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 66,
@@ -10924,7 +11123,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 67,
@@ -10955,7 +11157,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 48"
+          "name": "Комната 48",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 68,
@@ -10986,7 +11191,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 69,
@@ -11017,7 +11225,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 70,
@@ -11048,7 +11259,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 71,
@@ -11079,7 +11293,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 89"
+          "name": "Комната 89",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 72,
@@ -11110,7 +11327,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 89"
+          "name": "Комната 89",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 73,
@@ -11141,7 +11361,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 74,
@@ -11172,7 +11395,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 75,
@@ -11203,7 +11429,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 76,
@@ -11234,7 +11463,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 77,
@@ -11265,7 +11497,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 78,
@@ -11296,7 +11531,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 87"
+          "name": "Комната 87",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 79,
@@ -11327,7 +11565,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 87"
+          "name": "Комната 87",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 80,
@@ -11358,7 +11599,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 48"
+          "name": "Комната 48",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 81,
@@ -11389,7 +11633,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 82,
@@ -11420,7 +11667,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 83,
@@ -11451,7 +11701,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 84,
@@ -11482,7 +11735,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 85,
@@ -11513,7 +11769,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 86,
@@ -11544,7 +11803,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 87,
@@ -11575,7 +11837,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 88,
@@ -11606,7 +11871,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 89,
@@ -11637,7 +11905,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 90,
@@ -11668,7 +11939,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 91,
@@ -11699,7 +11973,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 92,
@@ -11730,7 +12007,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 93,
@@ -11761,7 +12041,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 94,
@@ -11792,7 +12075,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 95,
@@ -11823,7 +12109,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 96,
@@ -11854,7 +12143,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 98"
+          "name": "Комната 98",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 97,
@@ -11885,7 +12177,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 98"
+          "name": "Комната 98",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 98,
@@ -11916,7 +12211,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 8"
+          "name": "Комната 8",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 99,
@@ -11947,7 +12245,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 16"
+          "name": "Комната 16",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 100,
@@ -11978,7 +12279,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 101,
@@ -12009,7 +12313,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 102,
@@ -12040,7 +12347,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 103,
@@ -12071,7 +12381,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 104,
@@ -12098,7 +12411,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 105,
@@ -12129,7 +12445,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 106,
@@ -12160,7 +12479,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 107,
@@ -12195,7 +12517,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 108,
@@ -12230,7 +12555,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 109,
@@ -12261,7 +12589,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 110,
@@ -12292,7 +12623,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 111,
@@ -12323,7 +12657,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 112,
@@ -12354,7 +12691,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 113,
@@ -12385,7 +12725,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 114,
@@ -12416,7 +12759,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 115,
@@ -12447,7 +12793,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 116,
@@ -12478,7 +12827,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 117,
@@ -12509,7 +12861,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 118,
@@ -12540,7 +12895,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 119,
@@ -12571,7 +12929,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 120,
@@ -12602,7 +12963,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 121,
@@ -12633,7 +12997,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 122,
@@ -12664,7 +13031,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 123,
@@ -12695,7 +13065,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 124,
@@ -12726,7 +13099,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 125,
@@ -12757,7 +13133,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 126,
@@ -12788,7 +13167,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 127,
@@ -12819,7 +13201,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 128,
@@ -12850,7 +13235,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 129,
@@ -12881,7 +13269,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 38"
+          "name": "Комната 38",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 130,
@@ -12912,7 +13303,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 6"
+          "name": "Комната 6",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 131,
@@ -12943,7 +13337,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 93"
+          "name": "Комната 93",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 132,
@@ -12974,7 +13371,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 133,
@@ -13005,7 +13405,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 134,
@@ -13036,7 +13439,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 142"
+          "name": "Комната 142",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 135,
@@ -13067,7 +13473,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 143"
+          "name": "Комната 143",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 136,
@@ -13098,7 +13507,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 144"
+          "name": "Комната 144",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 137,
@@ -13129,7 +13541,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 138,
@@ -13160,7 +13575,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 139,
@@ -13191,7 +13609,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 140,
@@ -13222,7 +13643,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 141,
@@ -13253,7 +13677,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 142,
@@ -13284,7 +13711,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 114"
+          "name": "Комната 114",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 143,
@@ -13315,7 +13745,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 144,
@@ -13346,7 +13779,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 145,
@@ -13377,7 +13813,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 146,
@@ -13408,7 +13847,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 147,
@@ -13439,7 +13881,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 148,
@@ -13470,7 +13915,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 149,
@@ -13501,7 +13949,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 157"
+          "name": "Комната 157",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 150,
@@ -13532,7 +13983,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 158"
+          "name": "Комната 158",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 151,
@@ -13563,7 +14017,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 159"
+          "name": "Комната 159",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 152,
@@ -13594,7 +14051,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 160"
+          "name": "Комната 160",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 153,
@@ -13625,7 +14085,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 161"
+          "name": "Комната 161",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 154,
@@ -13656,7 +14119,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 162"
+          "name": "Комната 162",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 155,
@@ -13687,7 +14153,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 163"
+          "name": "Комната 163",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 156,
@@ -13718,7 +14187,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 164"
+          "name": "Комната 164",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 157,
@@ -13749,7 +14221,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 165"
+          "name": "Комната 165",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 158,
@@ -13780,7 +14255,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 114"
+          "name": "Комната 114",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 159,
@@ -13811,7 +14289,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 160,
@@ -13842,7 +14323,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 161,
@@ -13873,7 +14357,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 162,
@@ -13904,7 +14391,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 38"
+          "name": "Комната 38",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 163,
@@ -13935,7 +14425,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 38"
+          "name": "Комната 38",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 164,
@@ -13966,7 +14459,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 39"
+          "name": "Комната 39",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 165,
@@ -13997,7 +14493,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 173"
+          "name": "Комната 173",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 166,
@@ -14028,7 +14527,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 174"
+          "name": "Комната 174",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 167,
@@ -14059,7 +14561,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 175"
+          "name": "Комната 175",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 168,
@@ -14090,7 +14595,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 176"
+          "name": "Комната 176",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 169,
@@ -14121,7 +14629,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 177"
+          "name": "Комната 177",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 170,
@@ -14152,7 +14663,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 12"
+          "name": "Комната 12",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 171,
@@ -14183,7 +14697,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 179"
+          "name": "Комната 179",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 172,
@@ -14214,7 +14731,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 175"
+          "name": "Комната 175",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 173,
@@ -14245,7 +14765,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 113"
+          "name": "Комната 113",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 174,
@@ -14276,7 +14799,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 175"
+          "name": "Комната 175",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 175,
@@ -14307,7 +14833,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 113"
+          "name": "Комната 113",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 176,
@@ -14338,7 +14867,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 177,
@@ -14369,7 +14901,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 178,
@@ -14400,7 +14935,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 179,
@@ -14431,7 +14969,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 180,
@@ -14462,7 +15003,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 181,
@@ -14493,7 +15037,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 182,
@@ -14524,7 +15071,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 183,
@@ -14555,7 +15105,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 184,
@@ -14586,7 +15139,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 185,
@@ -14617,7 +15173,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 186,
@@ -14648,7 +15207,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 187,
@@ -14679,7 +15241,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 188,
@@ -14710,7 +15275,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 189,
@@ -14741,7 +15309,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 190,
@@ -14772,7 +15343,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 191,
@@ -14803,7 +15377,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 192,
@@ -14834,7 +15411,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 193,
@@ -14865,7 +15445,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 194,
@@ -14896,7 +15479,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 195,
@@ -14927,7 +15513,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 196,
@@ -14958,7 +15547,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 197,
@@ -14989,7 +15581,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 198,
@@ -15020,7 +15615,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 48"
+          "name": "Комната 48",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 199,
@@ -15051,7 +15649,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 200,
@@ -15082,7 +15683,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 201,
@@ -15113,7 +15717,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 202,
@@ -15144,7 +15751,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 203,
@@ -15175,7 +15785,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 204,
@@ -15206,7 +15819,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 205,
@@ -15237,7 +15853,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 206,
@@ -15268,7 +15887,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 207,
@@ -15299,7 +15921,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 208,
@@ -15330,7 +15955,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 209,
@@ -15361,7 +15989,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 210,
@@ -15392,7 +16023,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 211,
@@ -15423,7 +16057,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 212,
@@ -15454,7 +16091,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 213,
@@ -15485,7 +16125,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 214,
@@ -15516,7 +16159,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 215,
@@ -15547,7 +16193,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 216,
@@ -15578,7 +16227,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 217,
@@ -15609,7 +16261,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 218,
@@ -15640,7 +16295,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 219,
@@ -15671,7 +16329,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 220,
@@ -15702,7 +16363,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 221,
@@ -15733,7 +16397,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 222,
@@ -15764,7 +16431,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 223,
@@ -15795,7 +16465,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 224,
@@ -15826,7 +16499,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 225,
@@ -15857,7 +16533,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 226,
@@ -15888,7 +16567,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 227,
@@ -15919,7 +16601,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 228,
@@ -15950,7 +16635,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 229,
@@ -15981,7 +16669,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 230,
@@ -16012,7 +16703,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 231,
@@ -16043,7 +16737,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 232,
@@ -16074,7 +16771,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 233,
@@ -16105,7 +16805,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 234,
@@ -16136,7 +16839,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 235,
@@ -16167,7 +16873,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 236,
@@ -16198,7 +16907,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 39"
+          "name": "Комната 39",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 237,
@@ -16229,7 +16941,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 39"
+          "name": "Комната 39",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 238,
@@ -16260,7 +16975,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 39"
+          "name": "Комната 39",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 239,
@@ -16291,7 +17009,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 39"
+          "name": "Комната 39",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 240,
@@ -16322,7 +17043,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 38"
+          "name": "Комната 38",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 241,
@@ -16353,7 +17077,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 242,
@@ -16384,7 +17111,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 243,
@@ -16415,7 +17145,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 34"
+          "name": "Комната 34",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 244,
@@ -16446,7 +17179,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 245,
@@ -16477,7 +17213,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 246,
@@ -16508,7 +17247,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 247,
@@ -16539,7 +17281,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 248,
@@ -16570,7 +17315,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 249,
@@ -16601,7 +17349,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 250,
@@ -16632,7 +17383,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 251,
@@ -16663,7 +17417,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 252,
@@ -16694,7 +17451,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 253,
@@ -16725,7 +17485,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 254,
@@ -16756,7 +17519,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 255,
@@ -16787,7 +17553,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 256,
@@ -16818,7 +17587,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 257,
@@ -16849,7 +17621,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 258,
@@ -16880,7 +17655,10 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 259,
@@ -16911,10 +17689,14 @@
             30
           ],
           "room_type": "",
-          "name": "Комната 8"
+          "name": "Комната 8",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         }
       ],
-      "total_area_m2": 5203.270396864488
+      "total_area_m2": 5203.270396864488,
+      "image_path": ""
     },
     {
       "index": 2,
@@ -25191,7 +25973,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 1"
+          "name": "Комната 1",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 1,
@@ -25254,7 +26039,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 2"
+          "name": "Комната 2",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 2,
@@ -25285,7 +26073,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 3"
+          "name": "Комната 3",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 3,
@@ -25316,7 +26107,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 4"
+          "name": "Комната 4",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 4,
@@ -25347,7 +26141,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 5"
+          "name": "Комната 5",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 5,
@@ -25530,7 +26327,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 6"
+          "name": "Комната 6",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 6,
@@ -25829,7 +26629,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 7"
+          "name": "Комната 7",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 7,
@@ -25868,7 +26671,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 8"
+          "name": "Комната 8",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 8,
@@ -25907,7 +26713,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 9"
+          "name": "Комната 9",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 9,
@@ -25974,7 +26783,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 10"
+          "name": "Комната 10",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 10,
@@ -26005,7 +26817,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 11"
+          "name": "Комната 11",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 11,
@@ -26036,7 +26851,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 12"
+          "name": "Комната 12",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 12,
@@ -26067,7 +26885,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 13"
+          "name": "Комната 13",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 13,
@@ -26122,7 +26943,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 14"
+          "name": "Комната 14",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 14,
@@ -26153,7 +26977,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 15"
+          "name": "Комната 15",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 15,
@@ -26184,7 +27011,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 16"
+          "name": "Комната 16",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 16,
@@ -26243,7 +27073,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 17"
+          "name": "Комната 17",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 17,
@@ -26358,7 +27191,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 18"
+          "name": "Комната 18",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 18,
@@ -26393,7 +27229,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 19"
+          "name": "Комната 19",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 19,
@@ -26424,7 +27263,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 20"
+          "name": "Комната 20",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 20,
@@ -26455,7 +27297,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 21"
+          "name": "Комната 21",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 21,
@@ -26486,7 +27331,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 22"
+          "name": "Комната 22",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 22,
@@ -26517,7 +27365,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 23"
+          "name": "Комната 23",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 23,
@@ -26548,7 +27399,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 24"
+          "name": "Комната 24",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 24,
@@ -26579,7 +27433,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 25"
+          "name": "Комната 25",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 25,
@@ -26610,7 +27467,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 26"
+          "name": "Комната 26",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 26,
@@ -26641,7 +27501,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 27"
+          "name": "Комната 27",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 27,
@@ -26672,7 +27535,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 28"
+          "name": "Комната 28",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 28,
@@ -26703,7 +27569,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 29"
+          "name": "Комната 29",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 29,
@@ -26734,7 +27603,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 30"
+          "name": "Комната 30",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 30,
@@ -26765,7 +27637,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 31"
+          "name": "Комната 31",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 31,
@@ -26796,7 +27671,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 32"
+          "name": "Комната 32",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 32,
@@ -26827,7 +27705,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 33"
+          "name": "Комната 33",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 33,
@@ -26858,7 +27739,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 34"
+          "name": "Комната 34",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 34,
@@ -26901,7 +27785,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 35"
+          "name": "Комната 35",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 35,
@@ -26932,7 +27819,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 36"
+          "name": "Комната 36",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 36,
@@ -26963,7 +27853,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 37"
+          "name": "Комната 37",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 37,
@@ -26994,7 +27887,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 38"
+          "name": "Комната 38",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 38,
@@ -27065,7 +27961,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 39"
+          "name": "Комната 39",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 39,
@@ -27096,7 +27995,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 40"
+          "name": "Комната 40",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 40,
@@ -27131,7 +28033,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 41"
+          "name": "Комната 41",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 41,
@@ -27438,7 +28343,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 42"
+          "name": "Комната 42",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 42,
@@ -27513,7 +28421,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 43"
+          "name": "Комната 43",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 43,
@@ -27572,7 +28483,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 44"
+          "name": "Комната 44",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 44,
@@ -27611,7 +28525,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 45"
+          "name": "Комната 45",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 45,
@@ -27698,7 +28615,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 46"
+          "name": "Комната 46",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 46,
@@ -27729,7 +28649,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 47"
+          "name": "Комната 47",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 47,
@@ -27760,7 +28683,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 48"
+          "name": "Комната 48",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 48,
@@ -27803,7 +28729,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 49"
+          "name": "Комната 49",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 49,
@@ -27838,7 +28767,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 50"
+          "name": "Комната 50",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 50,
@@ -27873,7 +28805,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 51"
+          "name": "Комната 51",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 51,
@@ -27904,7 +28839,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 52"
+          "name": "Комната 52",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 52,
@@ -27935,7 +28873,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 53"
+          "name": "Комната 53",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 53,
@@ -27966,7 +28907,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 54"
+          "name": "Комната 54",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 54,
@@ -27997,7 +28941,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 55"
+          "name": "Комната 55",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 55,
@@ -28036,7 +28983,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 56"
+          "name": "Комната 56",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 56,
@@ -28067,7 +29017,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 57"
+          "name": "Комната 57",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 57,
@@ -28098,7 +29051,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 58"
+          "name": "Комната 58",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 58,
@@ -28129,7 +29085,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 59"
+          "name": "Комната 59",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 59,
@@ -28160,7 +29119,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 60"
+          "name": "Комната 60",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 60,
@@ -28191,7 +29153,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 61"
+          "name": "Комната 61",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 61,
@@ -28222,7 +29187,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 62"
+          "name": "Комната 62",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 62,
@@ -28253,7 +29221,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 63"
+          "name": "Комната 63",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 63,
@@ -28308,7 +29279,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 64"
+          "name": "Комната 64",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 64,
@@ -28339,7 +29313,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 65"
+          "name": "Комната 65",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 65,
@@ -28414,7 +29391,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 66"
+          "name": "Комната 66",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 66,
@@ -28453,7 +29433,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 67"
+          "name": "Комната 67",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 67,
@@ -28496,7 +29479,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 68"
+          "name": "Комната 68",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 68,
@@ -28527,7 +29513,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 69"
+          "name": "Комната 69",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 69,
@@ -28566,7 +29555,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 70"
+          "name": "Комната 70",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 70,
@@ -28673,7 +29665,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 71"
+          "name": "Комната 71",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 71,
@@ -28720,7 +29715,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 72"
+          "name": "Комната 72",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 72,
@@ -28787,7 +29785,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 73"
+          "name": "Комната 73",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 73,
@@ -28826,7 +29827,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 74"
+          "name": "Комната 74",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 74,
@@ -28865,7 +29869,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 75"
+          "name": "Комната 75",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 75,
@@ -28896,7 +29903,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 76"
+          "name": "Комната 76",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 76,
@@ -28963,7 +29973,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 77"
+          "name": "Комната 77",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 77,
@@ -29006,7 +30019,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 78"
+          "name": "Комната 78",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 78,
@@ -29049,7 +30065,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 79"
+          "name": "Комната 79",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 79,
@@ -29156,7 +30175,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 80"
+          "name": "Комната 80",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 80,
@@ -29199,7 +30221,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 81"
+          "name": "Комната 81",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 81,
@@ -29242,7 +30267,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 82"
+          "name": "Комната 82",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 82,
@@ -29285,7 +30313,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 83"
+          "name": "Комната 83",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 83,
@@ -29328,7 +30359,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 84"
+          "name": "Комната 84",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 84,
@@ -29359,7 +30393,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 85"
+          "name": "Комната 85",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 85,
@@ -29406,7 +30443,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 86"
+          "name": "Комната 86",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 86,
@@ -29437,7 +30477,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 87"
+          "name": "Комната 87",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 87,
@@ -29516,7 +30559,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 88"
+          "name": "Комната 88",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 88,
@@ -29571,7 +30617,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 89"
+          "name": "Комната 89",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 89,
@@ -29614,7 +30663,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 90"
+          "name": "Комната 90",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 90,
@@ -29645,7 +30697,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 91"
+          "name": "Комната 91",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 91,
@@ -29688,7 +30743,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 92"
+          "name": "Комната 92",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 92,
@@ -29795,7 +30853,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 93"
+          "name": "Комната 93",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 93,
@@ -29830,7 +30891,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 94"
+          "name": "Комната 94",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 94,
@@ -29861,7 +30925,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 95"
+          "name": "Комната 95",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 95,
@@ -29896,7 +30963,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 96"
+          "name": "Комната 96",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 96,
@@ -29935,7 +31005,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 97"
+          "name": "Комната 97",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 97,
@@ -29966,7 +31039,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 98"
+          "name": "Комната 98",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 98,
@@ -30001,7 +31077,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 99"
+          "name": "Комната 99",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 99,
@@ -30036,7 +31115,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 100"
+          "name": "Комната 100",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 100,
@@ -30075,7 +31157,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 101"
+          "name": "Комната 101",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 101,
@@ -30106,7 +31191,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 102"
+          "name": "Комната 102",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 102,
@@ -30137,7 +31225,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 103"
+          "name": "Комната 103",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 103,
@@ -30168,7 +31259,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 104"
+          "name": "Комната 104",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 104,
@@ -30199,7 +31293,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 105"
+          "name": "Комната 105",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 105,
@@ -30230,7 +31327,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 106"
+          "name": "Комната 106",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 106,
@@ -30261,7 +31361,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 107"
+          "name": "Комната 107",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 107,
@@ -30292,7 +31395,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 108"
+          "name": "Комната 108",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 108,
@@ -30323,7 +31429,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 109"
+          "name": "Комната 109",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 109,
@@ -30354,7 +31463,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 110"
+          "name": "Комната 110",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 110,
@@ -30385,7 +31497,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 111"
+          "name": "Комната 111",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 111,
@@ -30416,7 +31531,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 112"
+          "name": "Комната 112",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 112,
@@ -30447,7 +31565,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 113"
+          "name": "Комната 113",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 113,
@@ -30478,7 +31599,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 114"
+          "name": "Комната 114",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 114,
@@ -30509,7 +31633,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 115"
+          "name": "Комната 115",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 115,
@@ -30540,7 +31667,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 116"
+          "name": "Комната 116",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 116,
@@ -30579,7 +31709,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 117"
+          "name": "Комната 117",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 117,
@@ -30610,7 +31743,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 118"
+          "name": "Комната 118",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 118,
@@ -30641,7 +31777,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 119"
+          "name": "Комната 119",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 119,
@@ -30672,7 +31811,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 120"
+          "name": "Комната 120",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 120,
@@ -30703,7 +31845,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 121"
+          "name": "Комната 121",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 121,
@@ -30734,7 +31879,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 122"
+          "name": "Комната 122",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 122,
@@ -30777,7 +31925,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 123"
+          "name": "Комната 123",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 123,
@@ -30808,7 +31959,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 124"
+          "name": "Комната 124",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 124,
@@ -30839,7 +31993,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 125"
+          "name": "Комната 125",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 125,
@@ -30870,7 +32027,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 126"
+          "name": "Комната 126",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 126,
@@ -30901,7 +32061,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 127"
+          "name": "Комната 127",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 127,
@@ -30932,7 +32095,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 128"
+          "name": "Комната 128",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 128,
@@ -30963,7 +32129,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 129"
+          "name": "Комната 129",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 129,
@@ -30994,7 +32163,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 130"
+          "name": "Комната 130",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 130,
@@ -31025,7 +32197,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 131"
+          "name": "Комната 131",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 131,
@@ -31056,7 +32231,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 132"
+          "name": "Комната 132",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 132,
@@ -31087,7 +32265,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 133"
+          "name": "Комната 133",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 133,
@@ -31118,7 +32299,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 134"
+          "name": "Комната 134",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 134,
@@ -31149,7 +32333,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 135"
+          "name": "Комната 135",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 135,
@@ -31180,7 +32367,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 136"
+          "name": "Комната 136",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 136,
@@ -31211,7 +32401,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 137"
+          "name": "Комната 137",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 137,
@@ -31242,7 +32435,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 138"
+          "name": "Комната 138",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 138,
@@ -31273,7 +32469,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 139"
+          "name": "Комната 139",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 139,
@@ -31304,7 +32503,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 140"
+          "name": "Комната 140",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 140,
@@ -31335,7 +32537,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 141"
+          "name": "Комната 141",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 141,
@@ -31366,7 +32571,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 142"
+          "name": "Комната 142",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 142,
@@ -31397,7 +32605,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 143"
+          "name": "Комната 143",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 143,
@@ -31428,7 +32639,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 144"
+          "name": "Комната 144",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 144,
@@ -31459,7 +32673,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 145"
+          "name": "Комната 145",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 145,
@@ -31490,7 +32707,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 146"
+          "name": "Комната 146",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 146,
@@ -31521,7 +32741,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 147"
+          "name": "Комната 147",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 147,
@@ -31552,7 +32775,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 148"
+          "name": "Комната 148",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 148,
@@ -31583,7 +32809,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 149"
+          "name": "Комната 149",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 149,
@@ -31614,7 +32843,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 150"
+          "name": "Комната 150",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 150,
@@ -31645,7 +32877,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 151"
+          "name": "Комната 151",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 151,
@@ -31676,7 +32911,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 152"
+          "name": "Комната 152",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 152,
@@ -31707,7 +32945,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 153"
+          "name": "Комната 153",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 153,
@@ -31738,19 +32979,30 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 154"
+          "name": "Комната 154",
+          "floor_index": 2,
+          "priority": false,
+          "disabled": false
         }
       ],
-      "total_area_m2": 13191.333075694069
+      "total_area_m2": 13191.333075694069,
+      "image_path": ""
     }
   ],
   "current_floor_index": 1,
   "zones": [],
+  "manual_assignments": {},
   "employees_count": 1,
   "employee_names": [
     "Сотрудник 1"
   ],
+  "salary_type": "hour",
+  "salary_value": 200.0,
   "hourly_rate": 200.0,
+  "overtime_type": "percent",
+  "overtime_value": 50.0,
+  "overtime_premium_percent": 50.0,
+  "cleaning_type": "поддерживающая",
   "total_area_m2": 0.0,
   "calibration_line": null,
   "shifts": [
@@ -31765,11 +33017,17 @@
       "end": "17:00"
     }
   ],
+  "breaks": [
+    [
+      "12:00",
+      "13:00"
+    ]
+  ],
   "start_date": "2026-08-05",
   "end_date": "2026-08-12",
   "weather_factor": 1.0,
   "priority_mode": "area",
   "is_dxf_loaded": false,
   "created_date": "2026-08-05T00:39:39.640309",
-  "last_modified": "2026-08-05T00:47:04.034226"
+  "last_modified": "2026-08-17T20:38:24.895665"
 }

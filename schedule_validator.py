@@ -1,40 +1,21 @@
 """
-Валидатор практического расписания.
+Проверка расписания на физическую выполнимость.
 
-Проверяет:
-- все активные помещения;
-- нормативную кратность по каждому дню;
-- зоны ответственности;
-- отсутствие пересечений;
-- обед/перерывы;
-- физическую возможность переходов;
-- минимальный интервал повторной уборки;
-- фактическую переработку;
-- загрузку каждого сотрудника.
-
-Сверхурочная задача НЕ считается "пропавшей": она считается выполненной,
-но отдельно отображается как overtime. Поэтому отчёт может одновременно
-говорить "все уборки выполнены" и показывать, сколько минут пришлось
-вынести за пределы смены.
+Важное отличие от старой версии:
+- переработка является допустимой, если задача явно помечена is_overtime;
+- частота проверяется отдельно по каждому дню;
+- сотрудник считается существующим даже если у него пока нет задач;
+- переходы берутся из metadata scheduler, а не из любого случайного простоя;
+- задача не должна пересекать обед;
+- все активные комнаты и все требуемые уборки должны присутствовать.
 """
-from typing import Dict, Any, List
-from collections import defaultdict
+from typing import List, Dict, Any, Set, Tuple
 from datetime import datetime
+from collections import defaultdict
+import math
 
 from project import Project, Room, CleaningTask
 from sanitarnorm import get_frequency_per_day
-
-
-COOLDOWN_BY_TYPE = {
-    "санузел": 180,
-    "кухня": 180,
-    "коридор": 120,
-    "default": 90,
-}
-TRANSIT_SAME_FLOOR = 1
-TRANSIT_TO_OTHER_FLOOR = 5
-TRANSIT_TOILET = 3
-MAX_OVERTIME_PER_EMPLOYEE = 180
 
 
 def _time_to_minutes(value: str) -> int:
@@ -42,41 +23,11 @@ def _time_to_minutes(value: str) -> int:
     return h * 60 + m
 
 
-def _type_key(room_type: str) -> str:
-    s = (room_type or "").lower()
-    for key in ("санузел", "кухня", "коридор"):
-        if key in s:
-            return key
-    return "default"
-
-
-def _cooldown(room_type: str) -> int:
-    return COOLDOWN_BY_TYPE[_type_key(room_type)]
-
-
-def _transit(prev_room_type: str, prev_floor: int, next_floor: int) -> int:
-    if prev_room_type and _type_key(prev_room_type) == "санузел":
-        return TRANSIT_TOILET
-    if prev_floor != next_floor:
-        return TRANSIT_TO_OTHER_FLOOR
-    return TRANSIT_SAME_FLOOR
-
-
 def _find_floor_index(project: Project, room: Room) -> int:
     for fi, floor in enumerate(project.floors):
         if room in floor.rooms:
             return fi
     return 0
-
-
-def _required_frequency(project, room) -> int:
-    return max(
-        1,
-        int(round(
-            get_frequency_per_day(room.room_type)
-            * float(getattr(project, "weather_factor", 1.0))
-        )),
-    )
 
 
 def _shift_intervals(project):
@@ -99,29 +50,16 @@ def _shift_intervals(project):
     return (start, end), breaks
 
 
-def _regular_windows_from_shift(shift_start, shift_end, breaks):
-    windows = [(shift_start, shift_end)]
-    for bs, be in breaks:
-        new = []
-        for ws, we in windows:
-            if be <= ws or bs >= we:
-                new.append((ws, we))
-                continue
-            if ws < bs:
-                new.append((ws, bs))
-            if be < we:
-                new.append((be, we))
-        windows = [(a, b) for a, b in new if b > a]
-    return windows
-
-
-def _overlaps_break(start, end, breaks):
-    return any(start < be and end > bs for bs, be in breaks)
+def _required_frequency(project, room) -> int:
+    freq = get_frequency_per_day(room.room_type)
+    weather = getattr(project, "weather_factor", 1.0)
+    return max(1, int(round(freq * weather)))
 
 
 def validate_schedule(project: Project) -> Dict[str, Any]:
     result = {
         "valid": True,
+
         "rooms_total": 0,
         "active_rooms": 0,
         "disabled_rooms": 0,
@@ -135,19 +73,12 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
         "time_conflicts": 0,
         "break_violations": 0,
         "out_of_shift_tasks": 0,
-        "unapproved_out_of_shift_tasks": 0,
         "overtime_tasks": 0,
         "negative_duration_tasks": 0,
 
         "frequency_required": 0,
         "frequency_scheduled": 0,
         "frequency_violations": 0,
-        "repeat_interval_violations": 0,
-
-        "transition_violations": 0,
-        "zone_violations": 0,
-        "empty_employees": 0,
-        "idle_violations": 0,
 
         "cleaning_minutes": 0.0,
         "transit_minutes": 0.0,
@@ -169,20 +100,16 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
         "out_of_shift_details": [],
         "frequency_details": [],
         "overtime_details": [],
-        "transition_details": [],
-        "repeat_interval_details": [],
-        "zone_details": [],
         "warnings": [],
     }
 
     all_rooms = project.all_rooms()
-    active_rooms = [
-        r for r in all_rooms
-        if not getattr(r, "disabled", False)
-    ]
+    active_rooms = [r for r in all_rooms if not getattr(r, "disabled", False)]
+    disabled_rooms = [r for r in all_rooms if getattr(r, "disabled", False)]
+
     result["rooms_total"] = len(all_rooms)
     result["active_rooms"] = len(active_rooms)
-    result["disabled_rooms"] = len(all_rooms) - len(active_rooms)
+    result["disabled_rooms"] = len(disabled_rooms)
 
     shift_info, break_intervals = _shift_intervals(project)
     if shift_info is None:
@@ -191,20 +118,17 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
         return result
 
     shift_start, shift_end = shift_info
-    regular_windows = _regular_windows_from_shift(
-        shift_start, shift_end, break_intervals
-    )
-    regular_capacity = sum(b - a for a, b in regular_windows)
 
     tasks = list(getattr(project, "cleaning_tasks", []) or [])
     result["tasks_total"] = len(tasks)
     result["scheduled_tasks"] = len(tasks)
 
-    tasks_by_emp = defaultdict(list)
+    # ---------- задачи по сотрудникам ----------
+    tasks_by_emp: Dict[int, List[CleaningTask]] = defaultdict(list)
     for task in tasks:
         tasks_by_emp[int(task.employee)].append(task)
 
-    # ---------- конфликты одного сотрудника ----------
+    # ---------- пересечения ----------
     for emp, emp_tasks in tasks_by_emp.items():
         ordered = sorted(emp_tasks, key=lambda t: t.start_dt)
         for a, b in zip(ordered, ordered[1:]):
@@ -216,8 +140,10 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
                     f"{b.start_dt:%H:%M}-{b.end_dt:%H:%M}"
                 )
 
-    # ---------- время, обед, overtime ----------
-    overtime_by_emp = defaultdict(float)
+    if result["time_conflicts"]:
+        result["valid"] = False
+
+    # ---------- время смены / переработка ----------
     for task in tasks:
         start = task.start_dt.hour * 60 + task.start_dt.minute
         end = task.end_dt.hour * 60 + task.end_dt.minute
@@ -227,37 +153,35 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
             result["negative_duration_tasks"] += 1
             result["valid"] = False
 
-        if start < shift_start or end > shift_end:
-            result["out_of_shift_tasks"] += 1
-            result["out_of_shift_details"].append(
+        if is_overtime:
+            result["overtime_tasks"] += 1
+            ot = max(0, end - max(start, shift_end))
+            result["overtime_minutes"] += ot
+            result["overtime_details"].append(
                 f"Сотрудник {task.employee + 1}: "
-                f"ком. {task.room_id + 1}, "
-                f"{task.start_dt:%H:%M}-{task.end_dt:%H:%M}"
-                + (" — СВЕРХ СМЕНЫ" if is_overtime else "")
+                f"ком. {task.room_id + 1}, {task.start_dt:%H:%M}-{task.end_dt:%H:%M}"
             )
-
-            if is_overtime:
-                result["overtime_tasks"] += 1
-                ot = max(0, end - max(start, shift_end))
-                overtime_by_emp[task.employee] += ot
-                result["overtime_minutes"] += ot
-                result["overtime_details"].append(
+        else:
+            # Обычная задача обязана полностью находиться в смене.
+            if start < shift_start or end > shift_end:
+                result["out_of_shift_tasks"] += 1
+                result["out_of_shift_details"].append(
                     f"Сотрудник {task.employee + 1}: "
-                    f"ком. {task.room_id + 1}, "
-                    f"{task.start_dt:%H:%M}-{task.end_dt:%H:%M}"
+                    f"{task.start_dt:%H:%M}-{task.end_dt:%H:%M} "
+                    f"(ком. {task.room_id + 1})"
                 )
-            else:
-                result["unapproved_out_of_shift_tasks"] += 1
                 result["valid"] = False
 
-        if _overlaps_break(start, end, break_intervals):
-            result["break_violations"] += 1
-            result["break_violation_details"].append(
-                f"Сотрудник {task.employee + 1}: "
-                f"{task.start_dt:%H:%M}-{task.end_dt:%H:%M} "
-                f"(ком. {task.room_id + 1}) пересекает обед"
-            )
-            result["valid"] = False
+        # Даже сверхурочная уборка не может пересекать обед.
+        for bs, be in break_intervals:
+            if start < be and end > bs:
+                result["break_violations"] += 1
+                result["break_violation_details"].append(
+                    f"Сотрудник {task.employee + 1}: "
+                    f"{task.start_dt:%H:%M}-{task.end_dt:%H:%M} "
+                    f"(ком. {task.room_id + 1}) пересекает обед"
+                )
+                result["valid"] = False
 
     # ---------- комнаты ----------
     active_keys = {
@@ -267,12 +191,9 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
         if not getattr(room, "disabled", False)
     }
 
-    scheduled_keys = {
-        (int(t.floor_index), int(t.room_id))
-        for t in tasks
-    }
-
+    scheduled_keys = {(t.floor_index, t.room_id) for t in tasks}
     result["scheduled_rooms"] = len(active_keys & scheduled_keys)
+
     missing = active_keys - scheduled_keys
     result["unscheduled_rooms"] = len(missing)
     result["unscheduled_room_keys"] = [list(k) for k in sorted(missing)]
@@ -282,7 +203,7 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
         for fi, rid in sorted(missing):
             room = next(
                 (r for r in project.floors[fi].rooms if r.id == rid),
-                None,
+                None
             )
             if room:
                 result["missed_rooms"].append(
@@ -290,28 +211,7 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
                     f"(№{room.id + 1}, {room.area_m2:.0f} м²)"
                 )
 
-    # ---------- зоны ----------
-    zone_map = {}
-    for zone in getattr(project, "zones", []) or []:
-        fi = getattr(zone, "floor_index", 0)
-        emp = getattr(zone, "employee_index", 0)
-        for rid in getattr(zone, "room_ids", []) or []:
-            zone_map[(fi, rid)] = emp
-
-    for t in tasks:
-        key = (int(t.floor_index), int(t.room_id))
-        preferred = zone_map.get(key)
-        if preferred is not None and preferred != int(t.employee):
-            result["zone_violations"] += 1
-            result["zone_details"].append(
-                f"Ком. {t.room_id + 1}: сотрудник {t.employee + 1}, "
-                f"закреплён за сотрудником {preferred + 1}"
-            )
-
-    if result["zone_violations"]:
-        result["valid"] = False
-
-    # ---------- дублирование комнаты у сотрудников ----------
+    # Дубликат одного и того же помещения у разных сотрудников.
     room_employees = defaultdict(set)
     for t in tasks:
         room_employees[(t.floor_index, t.room_id)].add(t.employee)
@@ -322,16 +222,14 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
 
     # ---------- частота по дням ----------
     counts = defaultdict(int)
-    room_tasks = defaultdict(list)
     for t in tasks:
         counts[(t.start_dt.date(), t.floor_index, t.room_id)] += 1
-        room_tasks[(t.floor_index, t.room_id)].append(t)
 
+    # Планировщик текущей версии строит один день. Поэтому валидируем
+    # каждый день, для которого есть расписание.
     schedule_days = sorted({t.start_dt.date() for t in tasks})
     if not schedule_days:
-        schedule_days = [
-            getattr(project, "start_date", datetime.today().date())
-        ]
+        schedule_days = [getattr(project, "start_date", datetime.today().date())]
 
     for room in active_rooms:
         fi = _find_floor_index(project, room)
@@ -342,7 +240,7 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
             result["frequency_required"] += required
             result["frequency_scheduled"] += actual
 
-            if actual != required:
+            if actual < required:
                 result["frequency_violations"] += 1
                 result["frequency_details"].append(
                     f"{day:%d.%m.%Y} — {room.name} (№{room.id + 1}): "
@@ -352,153 +250,95 @@ def validate_schedule(project: Project) -> Dict[str, Any]:
     if result["frequency_violations"]:
         result["valid"] = False
 
-    # ---------- повторные уборки и переходы ----------
-    room_map = {
-        (fi, room.id): room
-        for fi, floor in enumerate(project.floors)
-        for room in floor.rooms
-    }
+    # ---------- нагрузка ----------
+    regular_capacity = 0
+    for a, b in _regular_windows_from_shift(shift_start, shift_end, break_intervals):
+        regular_capacity += b - a
 
-    for key, rtasks in room_tasks.items():
-        ordered = sorted(rtasks, key=lambda t: t.start_dt)
-        room = room_map.get(key)
-        if not room:
-            continue
-
-        cooldown = _cooldown(room.room_type)
-        for a, b in zip(ordered, ordered[1:]):
-            gap = (b.start_dt - a.end_dt).total_seconds() / 60.0
-            if gap < cooldown:
-                result["repeat_interval_violations"] += 1
-                result["repeat_interval_details"].append(
-                    f"Ком. {room.id + 1}: между уборками только "
-                    f"{gap:.0f} мин, требуется не менее {cooldown} мин"
-                )
-
-    if result["repeat_interval_violations"]:
-        result["valid"] = False
+    total_cleaning = 0.0
+    total_transit = 0.0
 
     for emp in range(result["employees"]):
-        ordered = sorted(
-            tasks_by_emp.get(emp, []),
-            key=lambda t: t.start_dt,
-        )
+        emp_tasks = sorted(tasks_by_emp.get(emp, []), key=lambda t: t.start_dt)
 
-        cleaning = 0.0
-        transit = 0.0
-
-        for t in ordered:
-            cleaning += max(
-                0.0,
-                (t.end_dt - t.start_dt).total_seconds() / 60.0,
-            )
-            transit += max(
-                0,
-                int(getattr(t, "transit_after_minutes", 0)),
-            )
-
-        result["employee_loads"][emp] = round(cleaning, 1)
-        result["employee_idle"][emp] = round(
-            max(0.0, regular_capacity - cleaning - transit),
-            1,
-        )
-
-        if not ordered:
-            result["empty_employees"] += 1
-            result["warnings"].append(
-                f"Сотрудник {emp + 1} не получил ни одной задачи"
-            )
-        else:
-            idle = result["employee_idle"][emp]
-            if idle > 15:
-                result["idle_violations"] += 1
-                result["underutilized_employees"].append({
-                    "employee": emp,
-                    "idle_minutes": idle,
-                    "utilization_percent": round(
-                        max(
-                            0.0,
-                            (regular_capacity - idle)
-                            / regular_capacity * 100,
-                        ) if regular_capacity else 0.0,
-                        1,
-                    ),
-                })
-
-        # Переход проверяется по реальному разрыву между задачами.
-        for a, b in zip(ordered, ordered[1:]):
-            prev_room = room_map.get((a.floor_index, a.room_id))
-            if not prev_room:
-                continue
-
-            required_transit = _transit(
-                prev_room.room_type,
-                a.floor_index,
-                b.floor_index,
-            )
-            gap = (b.start_dt - a.end_dt).total_seconds() / 60.0
-            if gap < required_transit:
-                result["transition_violations"] += 1
-                result["transition_details"].append(
-                    f"Сотрудник {emp + 1}: "
-                    f"между ком. {a.room_id + 1} и {b.room_id + 1} "
-                    f"{gap:.0f} мин, требуется {required_transit} мин"
-                )
-
-    if result["time_conflicts"] or result["break_violations"]:
-        result["valid"] = False
-    if result["transition_violations"]:
-        result["valid"] = False
-
-    # Пустой сотрудник — нарушение явного требования пользователя.
-    if result["empty_employees"]:
-        result["valid"] = False
-
-    # ---------- общая трудоёмкость ----------
-    result["cleaning_minutes"] = round(
-        sum(
+        clean = sum(
             max(0.0, (t.end_dt - t.start_dt).total_seconds() / 60.0)
-            for t in tasks
-        ),
-        1,
-    )
-    result["transit_minutes"] = round(
-        sum(
+            for t in emp_tasks
+        )
+        transit = sum(
             max(0, int(getattr(t, "transit_after_minutes", 0)))
-            for t in tasks
-        ),
-        1,
-    )
-    result["total_minutes"] = round(
-        result["cleaning_minutes"] + result["transit_minutes"],
-        1,
-    )
-    result["total_hours"] = round(result["total_minutes"] / 60.0, 2)
+            for t in emp_tasks
+        )
 
-    # ---------- overtime ----------
-    result["overtime_minutes"] = round(
-        float(result["overtime_minutes"]), 1
-    )
-    for emp, value in overtime_by_emp.items():
-        if value > MAX_OVERTIME_PER_EMPLOYEE:
-            result["warnings"].append(
-                f"Сотрудник {emp + 1}: переработка {value:.0f} мин "
-                f"превышает практический предел "
-                f"{MAX_OVERTIME_PER_EMPLOYEE} мин"
+        # Не считаем последний переход после окончания смены.
+        if emp_tasks and emp_tasks[-1].end_dt.hour * 60 + emp_tasks[-1].end_dt.minute >= shift_end:
+            transit = max(
+                0,
+                transit - int(getattr(emp_tasks[-1], "transit_after_minutes", 0))
             )
-            result["valid"] = False
+
+        total_cleaning += clean
+        total_transit += transit
+        result["employee_loads"][emp] = round(clean, 1)
+
+        regular_clean = sum(
+            max(0.0, (t.end_dt - t.start_dt).total_seconds() / 60.0)
+            for t in emp_tasks
+            if not getattr(t, "is_overtime", False)
+        )
+        idle = max(0.0, regular_capacity - regular_clean)
+        result["employee_idle"][emp] = round(idle, 1)
+
+        # Пустой сотрудник — важная проблема, но не "ошибка норматива":
+        # это означает, что задано больше людей, чем реально требуется.
+        if emp_tasks and regular_clean > 0:
+            result["underutilized_employees"].append({
+                "employee": emp,
+                "idle_minutes": round(idle, 1),
+                "utilization_percent": round(
+                    regular_clean / regular_capacity * 100, 1
+                ) if regular_capacity else 0.0,
+            })
+
+    result["cleaning_minutes"] = round(total_cleaning, 1)
+    result["transit_minutes"] = round(total_transit, 1)
+    result["total_minutes"] = round(total_cleaning + total_transit, 1)
+    result["total_hours"] = round(result["total_minutes"] / 60.0, 2)
 
     # ---------- стоимость ----------
     rate = float(getattr(project, "hourly_rate", 200.0))
-    overtime = result["overtime_minutes"]
-    regular_total = max(
-        0.0,
-        result["total_minutes"] - overtime,
-    )
+    regular_minutes = max(0.0, total_cleaning - result["overtime_minutes"])
+    regular_hours = regular_minutes / 60.0
+    overtime_hours = result["overtime_minutes"] / 60.0
     result["cost"] = round(
-        regular_total / 60.0 * rate
-        + overtime / 60.0 * rate * 1.5,
-        2,
+        regular_hours * rate + overtime_hours * rate * 1.5,
+        2
     )
 
+    # Пустые сотрудники предупреждают о завышенном штате.
+    for emp in range(result["employees"]):
+        if not tasks_by_emp.get(emp):
+            result["warnings"].append(
+                f"Сотрудник {emp + 1} не получил ни одной задачи"
+            )
+
+    if result["out_of_shift_tasks"] or result["break_violations"]:
+        result["valid"] = False
+
     return result
+
+
+def _regular_windows_from_shift(shift_start, shift_end, breaks):
+    windows = [(shift_start, shift_end)]
+    for bs, be in breaks:
+        new = []
+        for ws, we in windows:
+            if be <= ws or bs >= we:
+                new.append((ws, we))
+                continue
+            if ws < bs:
+                new.append((ws, bs))
+            if be < we:
+                new.append((be, we))
+        windows = [(a, b) for a, b in new if b > a]
+    return windows

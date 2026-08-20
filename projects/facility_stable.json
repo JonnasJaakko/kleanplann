@@ -378,7 +378,7 @@
               143.205
             ]
           ],
-          "area_m2": 4.772283538654294,
+          "area_m2": 4.772283538654295,
           "traffic": 10,
           "color": [
             255,
@@ -388,6 +388,7 @@
           ],
           "room_type": "коридор",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -411,7 +412,7 @@
               250.26
             ]
           ],
-          "area_m2": 29.57490263237396,
+          "area_m2": 29.574902632373963,
           "traffic": 10,
           "color": [
             60,
@@ -421,6 +422,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -444,7 +446,7 @@
               342.22
             ]
           ],
-          "area_m2": 12.758703032560248,
+          "area_m2": 12.75870303256025,
           "traffic": 10,
           "color": [
             255,
@@ -454,6 +456,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -481,7 +484,7 @@
               250.26
             ]
           ],
-          "area_m2": 11.213685436708692,
+          "area_m2": 11.213685436708694,
           "traffic": 10,
           "color": [
             0,
@@ -491,6 +494,7 @@
           ],
           "room_type": "зал",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -518,7 +522,7 @@
               143.205
             ]
           ],
-          "area_m2": 9.014402819057567,
+          "area_m2": 9.014402819057569,
           "traffic": 10,
           "color": [
             245,
@@ -528,6 +532,7 @@
           ],
           "room_type": "зал",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -551,7 +556,7 @@
               434.67
             ]
           ],
-          "area_m2": 3.8468061979486396,
+          "area_m2": 3.84680619794864,
           "traffic": 10,
           "color": [
             145,
@@ -561,6 +566,7 @@
           ],
           "room_type": "склад",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -592,7 +598,7 @@
               440.85
             ]
           ],
-          "area_m2": 9.452536047611833,
+          "area_m2": 9.452536047611835,
           "traffic": 10,
           "color": [
             70,
@@ -602,6 +608,7 @@
           ],
           "room_type": "коридор",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -625,7 +632,7 @@
               491.88
             ]
           ],
-          "area_m2": 3.0541155022851467,
+          "area_m2": 3.054115502285147,
           "traffic": 10,
           "color": [
             240,
@@ -635,6 +642,7 @@
           ],
           "room_type": "коридор",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -658,7 +666,7 @@
               310.99
             ]
           ],
-          "area_m2": 9.177603565805695,
+          "area_m2": 9.177603565805697,
           "traffic": 10,
           "color": [
             210,
@@ -668,6 +676,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -691,7 +700,7 @@
               250.26
             ]
           ],
-          "area_m2": 5.980202547749878,
+          "area_m2": 5.980202547749879,
           "traffic": 10,
           "color": [
             250,
@@ -701,6 +710,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -724,7 +734,7 @@
               375.58
             ]
           ],
-          "area_m2": 8.35780326730676,
+          "area_m2": 8.357803267306762,
           "traffic": 10,
           "color": [
             0,
@@ -734,6 +744,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -757,7 +768,7 @@
               419.35
             ]
           ],
-          "area_m2": 3.627299623017941,
+          "area_m2": 3.627299623017942,
           "traffic": 10,
           "color": [
             230,
@@ -767,6 +778,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -800,6 +812,7 @@
           ],
           "room_type": "коридор",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -823,7 +836,7 @@
               419.35
             ]
           ],
-          "area_m2": 2.2083789921517143,
+          "area_m2": 2.2083789921517147,
           "traffic": 10,
           "color": [
             60,
@@ -833,6 +846,7 @@
           ],
           "room_type": "коридор",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -856,7 +870,7 @@
               375.58
             ]
           ],
-          "area_m2": 3.5119715279581327,
+          "area_m2": 3.511971527958133,
           "traffic": 10,
           "color": [
             255,
@@ -866,6 +880,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -889,7 +904,7 @@
               311.405
             ]
           ],
-          "area_m2": 4.034931804867601,
+          "area_m2": 4.034931804867602,
           "traffic": 10,
           "color": [
             0,
@@ -899,6 +914,7 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -922,7 +938,7 @@
               342.22
             ]
           ],
-          "area_m2": 4.02996816904704,
+          "area_m2": 4.029968169047041,
           "traffic": 10,
           "color": [
             245,
@@ -932,6 +948,7 @@
           ],
           "room_type": "склад",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -955,7 +972,7 @@
               434.67
             ]
           ],
-          "area_m2": 5.103797363597376,
+          "area_m2": 5.103797363597377,
           "traffic": 10,
           "color": [
             145,
@@ -965,6 +982,7 @@
           ],
           "room_type": "склад",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -988,7 +1006,7 @@
               418.835
             ]
           ],
-          "area_m2": 3.2924532607709054,
+          "area_m2": 3.2924532607709063,
           "traffic": 10,
           "color": [
             70,
@@ -998,6 +1016,7 @@
           ],
           "room_type": "санузел",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         },
@@ -1021,7 +1040,7 @@
               419.35
             ]
           ],
-          "area_m2": 9.663015812659234,
+          "area_m2": 9.663015812659236,
           "traffic": 10,
           "color": [
             240,
@@ -1031,11 +1050,13 @@
           ],
           "room_type": "кабинет",
           "name": "Комната 1",
+          "floor_index": 0,
           "priority": false,
           "disabled": false
         }
       ],
-      "total_area_m2": 151.0999999999993
+      "total_area_m2": 151.0999999999993,
+      "image_path": "C:/Users/deadl/OneDrive/Рабочий стол/Plan.png"
     }
   ],
   "current_floor_index": 0,
@@ -1044,26 +1065,26 @@
       "id": 0,
       "name": "Сотрудник 1",
       "room_ids": [
-        11,
-        18,
-        12,
-        19,
         1,
-        10,
-        15,
-        8,
-        6,
-        14,
-        9,
         2,
         3,
-        13,
-        7,
+        19,
+        6,
+        8,
+        4,
+        12,
+        10,
+        9,
+        17,
+        0,
+        15,
         16,
         5,
-        17,
-        4,
-        0
+        11,
+        14,
+        18,
+        7,
+        13
       ],
       "color": [
         230,
@@ -1075,12 +1096,19 @@
       "floor_index": 0
     }
   ],
+  "manual_assignments": {},
   "employees_count": 1,
   "employee_names": [
     "Сотрудник 1"
   ],
+  "salary_type": "hour",
+  "salary_value": 1200.0,
   "hourly_rate": 1200.0,
-  "total_area_m2": 151.0999999999993,
+  "overtime_type": "percent",
+  "overtime_value": 50.0,
+  "overtime_premium_percent": 50.0,
+  "cleaning_type": "поддерживающая",
+  "total_area_m2": 151.09999999999934,
   "calibration_line": null,
   "shifts": [
     {
@@ -1101,5 +1129,5 @@
   "priority_mode": "area",
   "is_dxf_loaded": false,
   "created_date": "2026-08-05T00:47:39.746031",
-  "last_modified": "2026-08-17T13:57:27.052954"
+  "last_modified": "2026-08-17T20:48:45.519481"
 }

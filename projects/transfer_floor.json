@@ -7,7 +7,8 @@
       "name": "Этаж 1",
       "walls": [],
       "rooms": [],
-      "total_area_m2": 0.0
+      "total_area_m2": 0.0,
+      "image_path": ""
     },
     {
       "index": 1,
@@ -720374,7 +720375,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 1"
+          "name": "Комната 1",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 1,
@@ -720405,7 +720409,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 2"
+          "name": "Комната 2",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 2,
@@ -720448,7 +720455,10 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 3"
+          "name": "Комната 3",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         },
         {
           "id": 3,
@@ -720527,19 +720537,30 @@
             50
           ],
           "room_type": "",
-          "name": "Комната 4"
+          "name": "Комната 4",
+          "floor_index": 1,
+          "priority": false,
+          "disabled": false
         }
       ],
-      "total_area_m2": 780.4021837049191
+      "total_area_m2": 780.4021837049191,
+      "image_path": ""
     }
   ],
   "current_floor_index": 1,
   "zones": [],
+  "manual_assignments": {},
   "employees_count": 1,
   "employee_names": [
     "Сотрудник 1"
   ],
+  "salary_type": "hour",
+  "salary_value": 200.0,
   "hourly_rate": 200.0,
+  "overtime_type": "percent",
+  "overtime_value": 50.0,
+  "overtime_premium_percent": 50.0,
+  "cleaning_type": "поддерживающая",
   "total_area_m2": 0.0,
   "calibration_line": null,
   "shifts": [
@@ -720554,11 +720575,17 @@
       "end": "17:00"
     }
   ],
+  "breaks": [
+    [
+      "12:00",
+      "13:00"
+    ]
+  ],
   "start_date": "2026-08-04",
   "end_date": "2026-08-11",
   "weather_factor": 1.0,
   "priority_mode": "area",
   "is_dxf_loaded": false,
   "created_date": "2026-08-04T14:56:23.240133",
-  "last_modified": "2026-08-04T15:00:22.878952"
+  "last_modified": "2026-08-20T15:07:07.342345"
 }

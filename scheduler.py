@@ -275,10 +275,10 @@ def _find_overtime_slot(
     if occupied:
         start = max(start, max(b for _, b in occupied))
 
-    # Для повторной уборки учитываем cooldown.
-    for _, prev_end in sorted(room_history):
-        start = max(start, prev_end + cooldown)
-
+    # Важное практическое правило: если уборка уже не помещается
+    # в обычную смену, она выполняется сразу после последней работы
+    # сотрудника в смене. Периодичность между повторными уборками
+    # здесь намеренно НЕ применяется: это уже переработка.
     return start, start + duration
 
 

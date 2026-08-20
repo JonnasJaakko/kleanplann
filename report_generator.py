@@ -117,11 +117,11 @@ def _style_header(row):
 
 
 def _add_schedule_table(doc, tasks, project, compact=False):
-    table = doc.add_table(rows=1, cols=7)
+    table = doc.add_table(rows=1, cols=8)
     table.style = 'Table Grid'
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     hdr = table.rows[0]
-    labels = ['Этаж', '№', 'Комната', 'Площадь, м²', 'Начало', 'Окончание', 'Статус']
+    labels = ['Этаж', '№', 'Комната', 'Тип', 'Площадь, м²', 'Начало', 'Окончание', 'Длительность, мин']
     for i, label in enumerate(labels):
         hdr.cells[i].text = label
     _style_header(hdr)
@@ -135,15 +135,21 @@ def _add_schedule_table(doc, tasks, project, compact=False):
         row[0].text = str(t.floor_index + 1)
         row[1].text = str(t.room_id + 1)
         row[2].text = room.name if room else f'Комната {t.room_id + 1}'
-        row[3].text = f'{room.area_m2:.1f}' if room else '—'
-        row[4].text = t.start_dt.strftime('%H:%M')
-        row[5].text = t.end_dt.strftime('%H:%M')
-        row[6].text = 'СВЕРХ СМЕНЫ' if overtime else 'В смене'
+        row[3].text = room.room_type if room else '—'
+        row[4].text = f'{room.area_m2:.1f}' if room else '—'
+        row[5].text = t.start_dt.strftime('%H:%M')
+        row[6].text = t.end_dt.strftime('%H:%M')
+        row[7].text = str(int(round((t.end_dt - t.start_dt).total_seconds() / 60)))
     return table
 
 
 def generate_report(project, filepath):
     doc = Document()
+    first = doc.sections[0]
+    first.orientation = WD_ORIENT.LANDSCAPE
+    first.page_width, first.page_height = Inches(11), Inches(8.5)
+    first.top_margin = Inches(0.4); first.bottom_margin = Inches(0.4)
+    first.left_margin = Inches(0.4); first.right_margin = Inches(0.4)
     normal = doc.styles['Normal']
     normal.font.name = 'Calibri'
     normal.font.size = Pt(9)
@@ -169,7 +175,7 @@ def generate_report(project, filepath):
     doc.add_paragraph(f"Смена: {shift.start_time}–{shift.end_time}" if shift else "Смена: не задана")
     doc.add_paragraph(f"Обед: {lunch[0]}–{lunch[1]}" if lunch else "Обед: не задан")
     doc.add_paragraph(f"Погода: {_weather_name(project)}; тип уборки: {getattr(project, 'cleaning_type', 'поддерживающая')}")
-    doc.add_paragraph(f"Зарплата: {project.hourly_rate:.2f} руб/ч; надбавка за переработку: {getattr(project, 'overtime_premium_percent', 50):.1f}%")
+    doc.add_paragraph(f"Оплата: {getattr(project,'salary_type','hour')} — {getattr(project,'salary_value',0):.2f}; надбавка: {getattr(project,'overtime_type','percent')} — {getattr(project,'overtime_value',0):.2f}")
 
     doc.add_heading('Итоги', level=1)
     doc.add_paragraph(
@@ -236,7 +242,7 @@ def generate_report(project, filepath):
                 continue
             section = doc.add_section()
             section.orientation = WD_ORIENT.LANDSCAPE
-            section.page_width, section.page_height = section.page_height, section.page_width
+            section.page_width, section.page_height = Inches(11), Inches(8.5)
             section.top_margin = Inches(0.35); section.bottom_margin = Inches(0.35)
             section.left_margin = Inches(0.35); section.right_margin = Inches(0.35)
             doc.add_heading(f'{name} — зона ответственности, {floor.name}', level=1)
@@ -260,14 +266,13 @@ def generate_report(project, filepath):
             right.paragraphs[0].runs[0].bold = True
             ttable = right.add_table(rows=1, cols=5)
             ttable.style='Table Grid'
-            for i,h in enumerate(['№','Комната','Площадь','Время','Статус']): ttable.rows[0].cells[i].text=h
+            for i,h in enumerate(['№','Комната','Тип','Площадь','Время']): ttable.rows[0].cells[i].text=h
             _style_header(ttable.rows[0])
             for t in sorted(tasks,key=lambda x:x.start_dt):
                 room=_find_room(project,t.room_id,fi); row=ttable.add_row().cells
                 if getattr(t,'is_overtime',False):
                     for c in row: _set_cell_shading(c,'F4CCCC')
-                row[0].text=str(t.room_id+1); row[1].text=room.name if room else '—'; row[2].text=f'{room.area_m2:.1f}' if room else '—'
-                row[3].text=f'{t.start_dt:%H:%M}–{t.end_dt:%H:%M}'
-                row[4].text='СВЕРХ СМЕНЫ' if getattr(t,'is_overtime',False) else 'В смене'
+                row[0].text=str(t.room_id+1); row[1].text=room.name if room else '—'; row[2].text=room.room_type if room else '—'; row[3].text=f'{room.area_m2:.1f}' if room else '—'
+                row[4].text=f'{t.start_dt:%H:%M}–{t.end_dt:%H:%M}'
 
     doc.save(filepath)

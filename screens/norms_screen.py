@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from sanitarnorm import COMPLEXITY_FACTOR, DEFAULT_FREQUENCY_PER_DAY
+from sanitarnorm import COMPLEXITY_FACTOR, DEFAULT_FREQUENCY_PER_DAY, DEFAULT_TRAFFIC_PER_TYPE
 
 
 class NormsScreen(QWidget):
@@ -23,8 +23,8 @@ class NormsScreen(QWidget):
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
 
-        self.norms_table = QTableWidget(0, 3)
-        self.norms_table.setHorizontalHeaderLabels(["Тип", "Коэффициент сложности", "Частота (раз/день)"])
+        self.norms_table = QTableWidget(0, 4)
+        self.norms_table.setHorizontalHeaderLabels(["Тип", "Коэффициент сложности", "Частота (раз/день)", "Проходимость по умолчанию (чел/ч)"])
         layout.addWidget(self.norms_table)
 
         btn_layout_norms = QHBoxLayout()
@@ -52,12 +52,14 @@ class NormsScreen(QWidget):
             self.norms_table.setItem(row, 0, QTableWidgetItem(room_type))
             self.norms_table.setItem(row, 1, QTableWidgetItem(str(coeff)))
             self.norms_table.setItem(row, 2, QTableWidgetItem(str(DEFAULT_FREQUENCY_PER_DAY.get(room_type, 1))))
+            self.norms_table.setItem(row, 3, QTableWidgetItem(str(DEFAULT_TRAFFIC_PER_TYPE.get(room_type, 10))) )
 
     def add_norm_type(self):
         name, ok = QInputDialog.getText(self, "Добавить тип", "Название типа помещения:")
         if ok and name and name not in COMPLEXITY_FACTOR:
             COMPLEXITY_FACTOR[name] = 1.0
             DEFAULT_FREQUENCY_PER_DAY[name] = 1
+            DEFAULT_TRAFFIC_PER_TYPE[name] = 10
             self.load_norms_screen()
 
     def remove_norm_type(self):
@@ -70,6 +72,8 @@ class NormsScreen(QWidget):
             del COMPLEXITY_FACTOR[room_type]
         if room_type in DEFAULT_FREQUENCY_PER_DAY:
             del DEFAULT_FREQUENCY_PER_DAY[room_type]
+        if room_type in DEFAULT_TRAFFIC_PER_TYPE:
+            del DEFAULT_TRAFFIC_PER_TYPE[room_type]
         self.load_norms_screen()
 
     def save_norms(self):
@@ -78,8 +82,10 @@ class NormsScreen(QWidget):
             try:
                 coeff = float(self.norms_table.item(row, 1).text())
                 freq = int(self.norms_table.item(row, 2).text())
+                traffic = int(float(self.norms_table.item(row, 3).text()))
                 COMPLEXITY_FACTOR[room_type] = coeff
                 DEFAULT_FREQUENCY_PER_DAY[room_type] = freq
+                DEFAULT_TRAFFIC_PER_TYPE[room_type] = traffic
             except Exception:
                 pass
         QMessageBox.information(self, "Успех", "Нормативы обновлены.")

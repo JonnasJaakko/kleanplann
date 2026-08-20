@@ -13,6 +13,7 @@ GOST_TIME_PER_SQ_M = {
     "склад": 0.2,       # Минимальная влажная протирка полов
     "санузел": 1.5,    # Повышенное время на сантехнику, зеркала и дезинфекцию
     "кухня": 1.2,      # Зоны приема пищи (смыв жиров, дезинфекция)
+    "лестница": 0.4,  # Базовое время прохода ступеней; коэффициент сложности = 1
     "default": 0.4
 }
 
@@ -32,6 +33,7 @@ DEFAULT_FREQUENCY_PER_DAY = {
     "зал": 1,
     "склад": 1,
     "кухня": 2,        # После обеденных перерывов
+    "лестница": 3,     # Три уборки в день
     "default": 1
 }
 
@@ -42,11 +44,12 @@ COMPLEXITY_FACTOR = {
     "коридор": 1.0,    # Свободные пространства
     "зал": 0.9,        # Высокая доступность для инвентаря
     "склад": 0.8,
+    "лестница": 1.0,
     "default": 1.0
 }
 
 DEFAULT_TRAFFIC_PER_TYPE = {
-    "санузел": 50, "коридор": 100, "кабинет": 10, "зал": 20, "склад": 2, "кухня": 30
+    "санузел": 50, "коридор": 100, "кабинет": 10, "зал": 20, "склад": 2, "кухня": 30, "лестница": 100
 }
 
 def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: float = 1.0, cleaning_type: str = "поддерживающая") -> float:
@@ -71,9 +74,8 @@ def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: fl
             setup_time = v
             break
 
-    # Генеральная уборка: коэффициенты сложности/трудоёмкости удваиваются.
-    cleaning_multiplier = 2.0 if str(cleaning_type).strip().lower() == "генеральная" else 1.0
-    pure_duration = setup_time * cleaning_multiplier + (area_m2 * base_rate * comp_factor * weather_factor * cleaning_multiplier)
+    multiplier = 2.0 if str(cleaning_type).strip().lower() == "генеральная" else 1.0
+    pure_duration = (setup_time + (area_m2 * base_rate * comp_factor * weather_factor)) * multiplier
     return float(math.ceil(pure_duration))
 
 def get_frequency_per_day(room_type: str) -> int:

@@ -265,18 +265,13 @@ class PlanView(QGraphicsView):
     # ---------- Обработка мыши ----------
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
-            if self.current_tool in (2, 4):
-                scene_pos = self.mapToScene(event.pos())
-                vertex = self._find_nearest_vertex(scene_pos)
-                if vertex:
-                    self.dragged_vertex = vertex
-                    self._drag_start_pos = vertex.pos()
-                    self.setCursor(Qt.ClosedHandCursor)
-                    event.accept()
-                    return
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
-            super().mousePressEvent(event)
-            return
+            # ПКМ всегда используется для панорамирования. Это надёжнее
+            # встроенного ScrollHandDrag, который конфликтовал с нашим
+            # переопределённым mouseMoveEvent.
+            self._panning = True
+            self._pan_start = QPointF(event.pos())
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept(); return
 
         if event.button() == Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
@@ -343,6 +338,11 @@ class PlanView(QGraphicsView):
                 super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        if self._panning:
+            current=QPointF(event.pos()); delta=current-self._pan_start; self._pan_start=current
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value()-int(delta.x()))
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value()-int(delta.y()))
+            event.accept(); return
         if self.drawing and self.start_point:
             scene_pos = self.mapToScene(event.pos())
             end = scene_pos
@@ -473,12 +473,9 @@ class PlanView(QGraphicsView):
             self._reset_drawing()
             event.accept()
         elif event.button() == Qt.RightButton:
-            if self.dragged_vertex:
-                self.dragged_vertex = None
-                self._drag_start_pos = None
-                self.setCursor(Qt.CrossCursor)
-            self.setDragMode(QGraphicsView.NoDrag)
-            super().mouseReleaseEvent(event)
+            self._panning=False
+            self.setCursor(Qt.ArrowCursor if self.current_tool==0 else Qt.CrossCursor)
+            event.accept()
         else:
             super().mouseReleaseEvent(event)
 
