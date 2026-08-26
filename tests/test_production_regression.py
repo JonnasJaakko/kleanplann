@@ -160,3 +160,60 @@ def test_no_large_artificial_gap_from_release_target():
             if a.end_dt.hour * 60 + a.end_dt.minute <= 720 and b.start_dt.hour * 60 + b.start_dt.minute >= 780:
                 gap -= 60
             assert gap <= 120
+
+
+def test_time_priority_balances_load_and_common_finish():
+    from scheduler import schedule_single_shift
+    from zone_manager import distribute_project_zones
+    p = make_project(days=1, employees=3)
+    p.priority_mode = "time"
+    p.shifts = [Shift("Основная", "09:00", "19:00")]
+    p.breaks = [("12:00", "13:00")]
+    f = Floor(0, "Этаж 1")
+    for rid, x in enumerate((0, 20, 40, 60, 80, 100, 120, 140, 160)):
+        add_room(f, rid, "склад", 20, x=x)
+    p.floors = [f]
+    p.zones = distribute_project_zones(p, 3, "time")
+    result = schedule_single_shift(p, target_date=p.start_date, employees=3)
+    assert result["validation"]["valid"]
+    assert result["end_time_spread_minutes"] == 0
+    assert result["working_load_spread_minutes"] <= 15
+
+
+def test_fixed_room_time_and_employee_survive_recalculation():
+    from scheduler import schedule_single_shift
+    from zone_manager import distribute_project_zones
+    p = make_project(days=1, employees=2)
+    p.priority_mode = "time"
+    p.shifts = [Shift("Основная", "09:00", "19:00")]
+    p.breaks = [("12:00", "13:00")]
+    f = Floor(0, "Этаж 1")
+    for rid, x in enumerate((0, 20, 40, 60, 80, 100)):
+        add_room(f, rid, "склад", 20, x=x)
+    p.floors = [f]
+    p.zones = distribute_project_zones(p, 2, "time")
+    p.manual_assignments = {"0:0": 1}
+    p.schedule_locks = {"0:0:0": {"employee": 1, "start": "11:00", "fixed": True}}
+
+    first = schedule_single_shift(p, target_date=p.start_date, employees=2)
+    assert first["validation"]["valid"]
+    locked = next(t for t in p.cleaning_tasks if t.room_id == 0)
+    assert locked.employee == 1
+    assert locked.start_dt.strftime("%H:%M") == "11:00"
+    assert getattr(locked, "fixed", False)
+
+    # Пересчёт не должен сдвинуть зафиксированную задачу.
+    second = schedule_single_shift(p, target_date=p.start_date, employees=2)
+    assert second["validation"]["valid"]
+    locked_again = next(t for t in p.cleaning_tasks if t.room_id == 0)
+    assert locked_again.employee == 1
+    assert locked_again.start_dt.strftime("%H:%M") == "11:00"
+
+
+def test_schedule_locks_round_trip(tmp_path):
+    p = make_project(days=1, employees=2)
+    p.schedule_locks = {"0:2:1": {"employee": 1, "start": "15:20", "fixed": True}}
+    path = tmp_path / "locked.json"
+    p.save_to_file(path)
+    restored = Project.load_from_file(path)
+    assert restored.schedule_locks == p.schedule_locks

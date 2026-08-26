@@ -144,8 +144,24 @@ def _set_margins(section,top=.45,bottom=.45,left=.55,right=.55):
     section.top_margin=Inches(top); section.bottom_margin=Inches(bottom); section.left_margin=Inches(left); section.right_margin=Inches(right)
 
 
-def _new_landscape(doc,project):
-    sec=doc.add_section(WD_SECTION.NEW_PAGE); sec.orientation=WD_ORIENT.LANDSCAPE; sec.page_width=Inches(11); sec.page_height=Inches(8.5); _set_margins(sec,.45,.45,.55,.55); _add_footer(sec,project); return sec
+def _new_page(doc, project, orientation="landscape", margins=None):
+    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    if orientation == "portrait":
+        sec.orientation = WD_ORIENT.PORTRAIT
+        sec.page_width = Inches(8.27)
+        sec.page_height = Inches(11.69)
+    else:
+        sec.orientation = WD_ORIENT.LANDSCAPE
+        sec.page_width = Inches(11.69)
+        sec.page_height = Inches(8.27)
+    m = margins or ((.30, .30, .35, .35) if orientation == "portrait" else (.32, .32, .38, .38))
+    _set_margins(sec, *m)
+    _add_footer(sec, project)
+    return sec
+
+
+def _new_landscape(doc, project):
+    return _new_page(doc, project, "landscape")
 
 
 def _add_footer(section,project):
@@ -193,42 +209,158 @@ def _add_summary_table(doc,cost):
     _protect_table(table); return table
 
 
-def _add_compact_schedule_table(cell, tasks, project):
+def _short_room_name(name, max_len=22):
+    name = str(name or "—").strip()
+    return name if len(name) <= max_len else name[:max_len - 1] + "…"
+
+
+def _format_task_rows(tasks, project):
     show_floor = len(project.floors) > 1
-    headers = (['Этаж'] if show_floor else []) + ['№', 'Комната', 'Тип', 'м²', 'Время', 'мин.']
-    table = cell.add_table(rows=1, cols=len(headers))
-    table.style = 'Table Grid'
-    table.autofit = True
-    for i, h in enumerate(headers):
-        table.rows[0].cells[i].text = h
-    _style_header(table.rows[0])
+    rows = []
     for t in sorted(tasks, key=lambda x: x.start_dt):
         room = _find_room(project, t.room_id, t.floor_index)
-        row = table.add_row()
-        _set_cant_split(row)
-        offset = 0
         values = []
         if show_floor:
             values.append(str(t.floor_index + 1))
         values.extend([
             str(t.room_id + 1),
-            room.name if room else '—',
-            room.room_type if room else '—',
-            f'{room.area_m2:.1f}' if room else '—',
-            f'{t.start_dt:%H:%M}–{t.end_dt:%H:%M}',
+            _short_room_name(room.name if room else "—"),
+            room.room_type if room else "—",
+            f"{room.area_m2:.1f}" if room else "—",
+            f"{t.start_dt:%H:%M}–{t.end_dt:%H:%M}",
             str(int(round((t.end_dt - t.start_dt).total_seconds() / 60))),
         ])
-        for i, v in enumerate(values):
-            row.cells[i].text = v
-            for par in row.cells[i].paragraphs:
+        rows.append((values, bool(getattr(t, "is_overtime", False))))
+    return rows
+
+
+def _add_compact_schedule_table(container, tasks, project, font_size=7.0, widths=None, compact=False):
+    show_floor = len(project.floors) > 1
+    headers = (['Этаж'] if show_floor else []) + ['№', 'Комната', 'Тип', 'м²', 'Время', 'мин.']
+    table = container.add_table(rows=1, cols=len(headers))
+    table.style = 'Table Grid'
+    table.autofit = False
+    if widths:
+        for row in table.rows:
+            for i, width in enumerate(widths):
+                row.cells[i].width = Inches(width)
+    for i, h in enumerate(headers):
+        table.rows[0].cells[i].text = h
+    _style_header(table.rows[0])
+    for cell in table.rows[0].cells:
+        for par in cell.paragraphs:
+            par.paragraph_format.space_before = Pt(0)
+            par.paragraph_format.space_after = Pt(0)
+            par.paragraph_format.line_spacing = 0.85
+            for run in par.runs:
+                run.font.size = Pt(font_size + 0.2)
+
+    for values, is_overtime in _format_task_rows(tasks, project):
+        row = table.add_row()
+        _set_cant_split(row)
+        if widths:
+            for i, width in enumerate(widths):
+                row.cells[i].width = Inches(width)
+        for i, value in enumerate(values):
+            cell = row.cells[i]
+            cell.text = value
+            _set_cell_margins(cell, top=18 if compact else 24, start=28, bottom=18 if compact else 24, end=28)
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            for par in cell.paragraphs:
+                par.alignment = WD_ALIGN_PARAGRAPH.LEFT if i in ({1, 2} if not show_floor else {2, 3}) else WD_ALIGN_PARAGRAPH.CENTER
+                par.paragraph_format.space_before = Pt(0)
                 par.paragraph_format.space_after = Pt(0)
+                par.paragraph_format.line_spacing = 0.82
                 for run in par.runs:
-                    run.font.size = Pt(7.5)
-        if getattr(t, 'is_overtime', False):
+                    run.font.size = Pt(font_size)
+        if is_overtime:
             for c in row.cells:
                 _set_cell_shading(c, 'F4CCCC')
     _protect_table(table)
     return table
+
+
+def _add_employee_page(doc, project, emp, floor, fi, zone_rooms, tasks):
+    """Create one self-contained employee/floor page. Long schedules switch to portrait."""
+    task_count = len(tasks)
+    orientation = 'portrait' if task_count > 20 else 'landscape'
+    _new_page(doc, project, orientation)
+    name = project.employee_names[emp] if emp < len(project.employee_names) else f'Сотрудник {emp + 1}'
+
+    title = doc.add_paragraph()
+    title.paragraph_format.space_after = Pt(2)
+    title.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    r = title.add_run(f'{name} — {floor.name}')
+    r.bold = True
+    r.font.size = Pt(13 if orientation == 'landscape' else 12.5)
+    r.font.color.rgb = RGBColor(31, 78, 120)
+
+    info = doc.add_paragraph()
+    info.paragraph_format.space_after = Pt(3)
+    info.paragraph_format.line_spacing = 0.8
+    info.add_run(
+        f'Дата: {project.start_date:%d.%m.%Y} • Зона: {sum(r.area_m2 for r in zone_rooms):.1f} м² • '
+        f'Помещений: {len(zone_rooms)} • Задач: {task_count}'
+    ).font.size = Pt(7.5)
+
+    plan_stream = _draw_floor_plan(project, floor, employee_index=emp)
+
+    if orientation == 'landscape':
+        outer = doc.add_table(rows=1, cols=2)
+        outer.autofit = False
+        outer.allow_autofit = False
+        left, right = outer.rows[0].cells
+        left.width = Inches(5.55)
+        right.width = Inches(5.40)
+        for cell in (left, right):
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+            _set_cell_margins(cell, top=28, start=35, bottom=28, end=35)
+
+        lp = left.paragraphs[0]
+        lp.text = 'ПЛАН ЭТАЖА'
+        lp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        lp.paragraph_format.space_after = Pt(1)
+        for run in lp.runs:
+            run.bold = True; run.font.size = Pt(8)
+        pic_p = left.add_paragraph(); pic_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pic_p.paragraph_format.space_before = Pt(0); pic_p.paragraph_format.space_after = Pt(0)
+        pic_p.add_run().add_picture(plan_stream, **_fit_picture(plan_stream, 5.15, 5.85))
+
+        rp = right.paragraphs[0]
+        rp.text = 'РАСПИСАНИЕ'
+        rp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        rp.paragraph_format.space_after = Pt(1)
+        for run in rp.runs:
+            run.bold = True; run.font.size = Pt(8)
+        show_floor = len(project.floors) > 1
+        widths = ([0.36] if show_floor else []) + [0.42, 1.35, 0.95, 0.48, 1.08, 0.42]
+        _add_compact_schedule_table(right, tasks, project, font_size=6.6 if task_count > 15 else 7.0, widths=widths, compact=True)
+    else:
+        plan_box = doc.add_table(rows=1, cols=1)
+        plan_box.autofit = False
+        cell = plan_box.cell(0, 0)
+        _set_cell_margins(cell, top=20, start=28, bottom=24, end=28)
+        p = cell.paragraphs[0]
+        p.text = 'ПЛАН ЭТАЖА'
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_after = Pt(1)
+        for run in p.runs:
+            run.bold = True; run.font.size = Pt(7.5)
+        pic_p = cell.add_paragraph(); pic_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pic_p.paragraph_format.space_before = Pt(0); pic_p.paragraph_format.space_after = Pt(0)
+        pic_p.add_run().add_picture(plan_stream, **_fit_picture(plan_stream, 6.95, 2.85))
+
+        sp = doc.add_paragraph()
+        sp.paragraph_format.space_before = Pt(2); sp.paragraph_format.space_after = Pt(1)
+        sp.add_run('РАСПИСАНИЕ').bold = True
+        sp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in sp.runs: run.font.size = Pt(8)
+        show_floor = len(project.floors) > 1
+        widths = ([0.36] if show_floor else []) + [0.42, 2.0, 1.20, 0.55, 1.25, 0.48]
+        fs = 6.1 if task_count > 30 else (6.5 if task_count > 25 else 6.9)
+        _add_compact_schedule_table(doc, tasks, project, font_size=fs, widths=widths, compact=True)
+
+    _protect_table(outer if orientation == 'landscape' else plan_box)
 
 
 def _staffing_diagnostics_paragraph(doc, cost):
@@ -311,21 +443,46 @@ def generate_report(project, filepath, allow_invalid=False):
             fi = next((i for i, f in enumerate(project.floors) if room in f.rooms), 0)
             doc.add_paragraph(f'Этаж {fi + 1}, №{room.id + 1} {room.name} — исключено пользователем', style='List Bullet')
 
-    # ---- Общие планы ----
-    doc.add_page_break()
-    doc.add_heading('Зоны ответственности', level=1)
-    for fi, floor in enumerate(project.floors):
-        if not floor.rooms:
-            continue
-        if fi:
-            doc.add_page_break()
-        doc.add_heading(f'{floor.name} • площадь {_floor_area(floor):.1f} м²', level=2)
+    # ---- Общие планы: один этаж = один landscape-лист ----
+    floor_pages = [ (fi, floor) for fi, floor in enumerate(project.floors) if floor.rooms ]
+    for fi, floor in floor_pages:
+        _new_landscape(doc, project)
+        doc.add_heading(f'Зоны ответственности — {floor.name}', level=1)
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(4)
+        p.add_run(f'Площадь этажа: {_floor_area(floor):.1f} м² • Сотрудников: {project.employees_count}')
+
+        outer = doc.add_table(rows=1, cols=2)
+        outer.autofit = False
+        outer.allow_autofit = False
+        left, right = outer.rows[0].cells
+        left.width = Inches(6.3)
+        right.width = Inches(3.55)
+        left.vertical_alignment = right.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        _set_cell_margins(left, top=40, start=50, bottom=40, end=50)
+        _set_cell_margins(right, top=40, start=50, bottom=40, end=50)
+
+        lp = left.paragraphs[0]
+        lp.text = 'ПЛАН ЭТАЖА'
+        lp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in lp.runs:
+            run.bold = True
+            run.font.size = Pt(9)
         stream = _draw_floor_plan(project, floor)
-        p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run().add_picture(stream, **_fit_picture(stream, 9.7, 5.6))
-        legend = doc.add_table(rows=1, cols=5)
+        pic_p = left.add_paragraph()
+        pic_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pic_p.add_run().add_picture(stream, **_fit_picture(stream, 6.0, 6.0))
+
+        rp = right.paragraphs[0]
+        rp.text = 'ЗОНЫ'
+        rp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in rp.runs:
+            run.bold = True
+            run.font.size = Pt(9)
+
+        legend = right.add_table(rows=1, cols=4)
         legend.style = 'Table Grid'
-        for i, h in enumerate(('Сотрудник', 'Комнат', 'Площадь', 'Комнаты', 'Цвет')):
+        for i, h in enumerate(('Сотр.', 'Комн.', 'м²', '№ помещений')):
             legend.rows[0].cells[i].text = h
         _style_header(legend.rows[0])
         for emp in range(project.employees_count):
@@ -333,59 +490,32 @@ def generate_report(project, filepath, allow_invalid=False):
             if not rooms:
                 continue
             z = _zone_for(project, fi, rooms[0].id)
-            row = legend.add_row(); _set_cant_split(row)
+            row = legend.add_row()
+            _set_cant_split(row)
             vals = [
                 project.employee_names[emp] if emp < len(project.employee_names) else f'Сотрудник {emp + 1}',
                 str(len(rooms)),
-                f'{sum(r.area_m2 for r in rooms):.1f} м²',
-                ', '.join(f'№{r.id + 1}' for r in sorted(rooms, key=lambda x: x.id)),
-                _hex_color(z.color[:3]),
+                f'{sum(r.area_m2 for r in rooms):.1f}',
+                ', '.join(str(r.id + 1) for r in sorted(rooms, key=lambda x: x.id)),
             ]
-            for i, v in enumerate(vals): row.cells[i].text = v
+            for i, v in enumerate(vals):
+                row.cells[i].text = v
+                for par in row.cells[i].paragraphs:
+                    par.paragraph_format.space_after = Pt(0)
+                    for run in par.runs:
+                        run.font.size = Pt(7.5)
             _set_cell_shading(row.cells[0], _hex_color(z.color[:3]))
         _protect_table(legend)
+        _protect_table(outer)
 
-    # ---- Индивидуальные листы: план слева, расписание справа ----
+    # ---- Индивидуальные листы: адаптивно под один лист ----
     for emp in range(project.employees_count):
-        name = project.employee_names[emp] if emp < len(project.employee_names) else f'Сотрудник {emp + 1}'
         for fi, floor in enumerate(project.floors):
             zone_rooms = [r for r in floor.rooms if (z := _zone_for(project, fi, r.id)) and z.employee_index == emp]
             if not zone_rooms:
                 continue
             tasks = [t for t in project.cleaning_tasks if t.employee == emp and t.floor_index == fi]
             tasks.sort(key=lambda t: t.start_dt)
-
-            # Разбиваем длинную таблицу на конечные страницы, сохраняя план слева.
-            chunk_size = 18
-            chunks = [tasks[i:i + chunk_size] for i in range(0, len(tasks), chunk_size)] or [[]]
-            for chunk_idx, chunk in enumerate(chunks):
-                _new_landscape(doc, project)
-                doc.add_heading(f'{name} — зона ответственности, {floor.name}', level=1)
-                p = doc.add_paragraph()
-                p.add_run(
-                    f'Дата: {project.start_date:%d.%m.%Y} • Погода: {getattr(project, "weather_factor", 1.0)} • '
-                    f'Площадь зоны: {sum(r.area_m2 for r in zone_rooms):.1f} м²'
-                )
-
-                outer = doc.add_table(rows=1, cols=2)
-                outer.autofit = False
-                left, right = outer.rows[0].cells
-                left.width = Inches(5.0); right.width = Inches(5.0)
-                left.vertical_alignment = right.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-
-                left.paragraphs[0].text = 'ПЛАН ЗОНЫ'
-                left.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                left.paragraphs[0].runs[0].bold = True
-                plan_stream = _draw_floor_plan(project, floor, employee_index=emp)
-                left.add_paragraph().add_run().add_picture(plan_stream, **_fit_picture(plan_stream, 4.65, 5.5))
-
-                right.paragraphs[0].text = 'ТАБЛИЦА РАСПИСАНИЯ'
-                right.paragraphs[0].runs[0].bold = True
-                right.add_paragraph(f'Задач на странице: {len(chunk)}')
-                _add_compact_schedule_table(right, chunk, project)
-
-                _protect_table(outer)
-                if chunk_idx < len(chunks) - 1:
-                    doc.add_paragraph('Продолжение расписания → следующая страница').alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            _add_employee_page(doc, project, emp, floor, fi, zone_rooms, tasks)
 
     doc.save(filepath)

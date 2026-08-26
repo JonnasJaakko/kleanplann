@@ -15,7 +15,8 @@ from PySide6.QtGui import QPixmap, QPen, QColor, QBrush, QPolygonF
 from project import Project, Wall, Room, Floor, Zone, CleaningTask, Shift
 from room_builder import (build_rooms_from_walls, detect_rooms,
                           extract_wall_centerlines, cleanup_segments, snap_wall_ends)
-from zone_manager import manual_distribution, distribute_project_zones, PRIORITY_BALANCED
+from zone_manager import (manual_distribution, distribute_project_zones, PRIORITY_BALANCED,
+                          PRIORITY_PROXIMITY, PRIORITY_AREA, PRIORITY_COUNT, PRIORITY_TIME)
 from cost_calculator import calculate_cost, estimate_required_employees
 from report_generator import generate_report, ReportGenerationError
 from schedule_validator import validate_schedule
@@ -118,7 +119,10 @@ class MainWindow(QMainWindow):
       Для изображений можно автоматически распознать стены.</li>
   <li>Укажите количество сотрудников или нажмите <b>Авторасчёт персонала</b>.</li>
   <li>Нажмите <b>Создать расписание</b>. На следующем экране зоны и отчётность
-      находятся вместе; изменение приоритета автоматически пересоздаёт расписание.</li>
+      находятся вместе; изменение режима автоматически пересоздаёт расписание.</li>
+  <li>Режим <b>Время</b> выравнивает рабочую нагрузку сотрудников и старается синхронизировать их время окончания.</li>
+  <li>В отчёте нажмите на комнату, чтобы изменить сотрудника и желаемое начало уборки.
+      Чекбокс <b>Зафиксировать</b> сохраняет выбранный слот при следующих пересчётах.</li>
   <li>Сгенерируйте <b>расписание уборки</b> и сохраните отчёт (DOCX/CSV/Excel).</li>
 </ol>
 
@@ -1067,9 +1071,14 @@ class MainWindow(QMainWindow):
             emp=zone.employee_index+1 if zone else 0; cx=sum(x for x,y in room.points)/len(room.points); cy=sum(y for x,y in room.points)/len(room.points)
             label=QGraphicsTextItem(f'{emp}\n{room.name}\n№{room.id+1} ({room.area_m2:.0f} м²)'); label.setDefaultTextColor(Qt.white); label.setPos(cx-40,cy-28); label.setFlag(QGraphicsItem.ItemIgnoresTransformations); label.setData(1,'zone_label'); label.setData(Qt.UserRole,room.id); label.setData(2,floor.index); label.setAcceptHoverEvents(True)
             label.hoverEnterEvent=lambda ev,rid=room.id,fi=floor.index,emp=(zone.employee_index if zone else 0): QToolTip.showText(ev.screenPos(),self._get_schedule_tip(rid,emp,fi))
-            label.hoverLeaveEvent=lambda ev: QToolTip.hideText(); label.mousePressEvent=lambda ev,rid=room.id:self.change_room_employee(rid); scene.addItem(label)
+            label.hoverLeaveEvent=lambda ev: QToolTip.hideText()
+            label.mousePressEvent=lambda ev,rid=room.id,fi=floor.index:self.edit_room_schedule(fi, rid, 0)
+            label.setCursor(Qt.PointingHandCursor)
+            scene.addItem(label)
             item.hoverEnterEvent=lambda ev,rid=room.id,fi=floor.index,emp=(zone.employee_index if zone else 0): QToolTip.showText(ev.screenPos(),self._get_schedule_tip(rid,emp,fi))
-            item.hoverLeaveEvent=lambda ev: QToolTip.hideText(); item.mousePressEvent=lambda ev,rid=room.id:self.change_room_employee(rid)
+            item.hoverLeaveEvent=lambda ev: QToolTip.hideText()
+            item.mousePressEvent=lambda ev,rid=room.id,fi=floor.index:self.edit_room_schedule(fi, rid, 0)
+            item.setCursor(Qt.PointingHandCursor)
         rect=scene.itemsBoundingRect()
         if rect.width()>0 and rect.height()>0:self.zone_view.setSceneRect(rect); self.zone_view.fitInView(rect,Qt.KeepAspectRatio)
 
@@ -1092,18 +1101,154 @@ class MainWindow(QMainWindow):
         if not tasks:return 'Нет назначенных уборок'
         return 'Уборки комнаты:\n'+'\n'.join(f'{t.start_dt:%H:%M}–{t.end_dt:%H:%M}' for t in sorted(tasks,key=lambda x:x.start_dt))
 
+    def handle_report_room_link(self, url):
+        """Обрабатывает клики по комнате в отчёте справа."""
+        try:
+            parts = str(url.toString()).split(':', 1)[1].split('/')
+            fi, rid = int(parts[0]), int(parts[1])
+            occurrence = int(parts[2]) if len(parts) > 2 else 0
+        except Exception:
+            return
+        self.edit_room_schedule(fi, rid, occurrence)
+
+    def edit_room_schedule(self, floor_index, room_id, selected_occurrence=0):
+        """Редактор сотрудника/времени для конкретной нормативной уборки.
+
+        В диалоге пользователь может:
+        - выбрать сотрудника;
+        - задать новое время;
+        - включить «Зафиксировать», чтобы конкретный слот больше не двигался
+          при последующих пересчётах.
+        """
+        if not self.project:
+            return
+        fi = int(floor_index)
+        floor = self.project.floors[fi] if 0 <= fi < len(self.project.floors) else None
+        room = next((r for r in floor.rooms if r.id == int(room_id)), None) if floor else None
+        if not room:
+            return
+
+        tasks = sorted(
+            [t for t in self.project.cleaning_tasks if t.floor_index == fi and t.room_id == int(room_id)],
+            key=lambda t: t.start_dt,
+        )
+        # Если нормативную уборку ещё не удалось поставить, сообщаем об этом:
+        # пользователь всё равно может назначить предпочтение для следующего пересчёта.
+        from PySide6.QtWidgets import (
+            QDialog, QFormLayout, QComboBox, QTimeEdit, QCheckBox, QDialogButtonBox,
+            QSpinBox
+        )
+        from PySide6.QtCore import QTime
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f'Настройка уборки: {room.name} (этаж {fi + 1})')
+        dlg.setMinimumWidth(460)
+        form = QFormLayout(dlg)
+
+        occurrence_box = QComboBox()
+        task_count = max(1, len(tasks))
+        for idx in range(task_count):
+            if idx < len(tasks):
+                t = tasks[idx]
+                occurrence_box.addItem(
+                    f'Уборка {idx + 1}: {t.start_dt:%H:%M}–{t.end_dt:%H:%M}', idx
+                )
+            else:
+                occurrence_box.addItem(f'Уборка {idx + 1}: новая', idx)
+        occurrence_box.setCurrentIndex(max(0, min(int(selected_occurrence), occurrence_box.count() - 1)))
+        form.addRow('Уборка:', occurrence_box)
+
+        employee_box = QComboBox()
+        names = self.project.employee_names[:self.project.employees_count]
+        employee_box.addItems(names)
+        form.addRow('Сотрудник:', employee_box)
+
+        time_edit = QTimeEdit()
+        time_edit.setDisplayFormat('HH:mm')
+        time_edit.setTime(QTime(9, 0))
+        # QTimeEdit не поддерживает setSingleStep(); оставляем точный ввод времени.
+        # При необходимости пользователь может указать любую минуту, а scheduler
+        # сам проверит допустимость окна, обед и зафиксированные ограничения.
+        form.addRow('Желаемое начало:', time_edit)
+
+        fixed_check = QCheckBox('Зафиксировать время и сотрудника')
+        fixed_check.setToolTip('При повторном пересчёте эта уборка не будет перенесена или переназначена.')
+        form.addRow('', fixed_check)
+
+        info = QLabel()
+        info.setWordWrap(True)
+        info.setStyleSheet('color:#555;')
+        form.addRow('', info)
+
+        def load_occurrence(idx):
+            task = tasks[idx] if idx < len(tasks) else None
+            if task:
+                emp = int(task.employee)
+                employee_box.setCurrentIndex(max(0, min(emp, employee_box.count() - 1)))
+                time_edit.setTime(QTime(task.start_dt.hour, task.start_dt.minute))
+                lock = self.project.schedule_locks.get(f'{fi}:{room_id}:{idx}', {}) if hasattr(self.project, 'schedule_locks') else {}
+                fixed_check.setChecked(bool(lock.get('fixed', getattr(task, 'fixed', False))))
+                info.setText(
+                    f'Длительность: {(task.end_dt - task.start_dt).total_seconds() / 60:.0f} мин. '
+                    f'Текущее окончание: {task.end_dt:%H:%M}.'
+                )
+            else:
+                zone = next((z for z in self.project.zones if getattr(z, 'floor_index', 0) == fi and room_id in z.room_ids), None)
+                emp = zone.employee_index if zone else 0
+                employee_box.setCurrentIndex(max(0, min(emp, employee_box.count() - 1)))
+                lock = self.project.schedule_locks.get(f'{fi}:{room_id}:{idx}', {}) if hasattr(self.project, 'schedule_locks') else {}
+                if lock.get('start'):
+                    try:
+                        h, m = map(int, str(lock['start']).split(':'))
+                        time_edit.setTime(QTime(h, m))
+                    except Exception:
+                        pass
+                fixed_check.setChecked(bool(lock.get('fixed', False)))
+                duration = get_room_duration_for_gui(self.project, room)
+                info.setText(f'Нормативная длительность: {duration} мин.')
+
+        def get_room_duration_for_gui(project, room_obj):
+            from sanitarnorm import get_cleaning_time_minutes
+            return int(round(get_cleaning_time_minutes(
+                room_obj.room_type, room_obj.area_m2,
+                getattr(project, 'weather_factor', 1.0),
+                getattr(project, 'cleaning_type', 'поддерживающая'),
+            )))
+
+        occurrence_box.currentIndexChanged.connect(load_occurrence)
+        load_occurrence(occurrence_box.currentData() or 0)
+
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        occurrence = int(occurrence_box.currentData() or 0)
+        employee = int(employee_box.currentIndex())
+        start = time_edit.time().toString('HH:mm')
+        # Храним предпочтение всегда. Если чекбокс снят, scheduler может сдвинуть
+        # задачу при оптимизации, но начинает расчёт с выбранного времени.
+        key = f'{fi}:{room_id}'
+        self.project.manual_assignments[key] = employee
+        if not hasattr(self.project, 'schedule_locks'):
+            self.project.schedule_locks = {}
+        self.project.schedule_locks[f'{fi}:{room_id}:{occurrence}'] = {
+            'employee': employee,
+            'start': start,
+            'fixed': fixed_check.isChecked(),
+        }
+        # Перед повторным расчётом заново собрать зоны, но оставить ручные назначения.
+        active = [r for r in self.project.all_rooms() if not getattr(r, 'disabled', False)]
+        self.project.zones = self._distribute_active_rooms(active, self.project.priority_mode or PRIORITY_BALANCED)
+        self._apply_manual_assignments()
+        self._generate_schedule_and_show()
+
     def change_room_employee(self, room_id):
-        if not self.project: return
-        fi=self.project.current_floor_index
-        names=self.project.employee_names[:self.project.employees_count]
-        if not names: return
-        key=f'{fi}:{room_id}'
-        current=self.project.manual_assignments.get(key)
-        if current is None:
-            current=next((z.employee_index for z in self.project.zones if getattr(z,'floor_index',0)==fi and room_id in z.room_ids),0)
-        item,ok=QInputDialog.getItem(self,'Назначение комнаты','Кто будет убирать выбранную комнату?',names,max(0,min(current,len(names)-1)),False)
-        if not ok:return
-        emp=names.index(item); self.project.manual_assignments[key]=emp; self._apply_manual_assignments(); self.refresh_zone_display(); self.load_report_screen()
+        """Совместимость со старым вызовом из карты: открываем новый редактор."""
+        self.edit_room_schedule(self.project.current_floor_index, room_id, 0)
 
     def _apply_manual_assignments(self):
         if not self.project.zones:return
@@ -1150,6 +1295,19 @@ class MainWindow(QMainWindow):
         else:
             text += "<p style='color:#187a3b'><b>Все активные помещения получили нормативную уборку.</b></p>"
 
+        if getattr(self.project, 'priority_mode', '') == PRIORITY_TIME:
+            analytics = {}
+            for t in tasks:
+                analytics.setdefault(t.employee, []).append(t)
+            ends = [max((x.end_dt for x in ts), default=None) for ts in analytics.values()]
+            ends = [x for x in ends if x]
+            loads = []
+            for ts in analytics.values():
+                loads.append(sum((x.end_dt-x.start_dt).total_seconds()/60 for x in ts) + sum(int(getattr(x,'transit_before_minutes',0)) for x in ts))
+            if ends:
+                end_spread = int((max(ends)-min(ends)).total_seconds()/60)
+                text += f"<p><b>Режим «Время»:</b> разброс окончания смен {end_spread} мин.; разброс рабочей нагрузки {int(max(loads)-min(loads)) if loads else 0} мин.</p>"
+
         for emp in range(self.project.employees_count):
             emp_tasks=sorted([t for t in tasks if t.employee==emp], key=lambda x:x.start_dt)
             unique_rooms={(t.floor_index,t.room_id) for t in emp_tasks}
@@ -1167,9 +1325,29 @@ class MainWindow(QMainWindow):
                 room=next((r for f in self.project.floors for r in f.rooms if r.id==t.room_id and f.index==t.floor_index),None)
                 row_style=" style='background:#f4cccc'" if getattr(t,'is_overtime',False) else ''
                 floor_cell=f'<td>{t.floor_index+1}</td>' if len(self.project.floors)>1 else ''
-                text += f"<tr{row_style}>{floor_cell}<td>{t.room_id+1}</td><td>{room.name if room else t.room_id+1}</td><td>{room.room_type if room else '—'}</td><td>{room.area_m2:.1f}</td><td>{t.start_dt:%H:%M}</td><td>{t.end_dt:%H:%M}</td><td>{int(round((t.end_dt-t.start_dt).total_seconds()/60))}</td></tr>"
+                fixed_mark = ' 🔒' if getattr(t, 'fixed', False) else ''
+                number_cell = f'<td style="text-align:center; width:8%">{t.room_id + 1}</td>'
+                name_cell = f"<td style=\"width:24%\">{room.name if room else '—'}{fixed_mark}</td>"
+                text += (
+                    f"<tr{row_style}>{floor_cell}{number_cell}{name_cell}"
+                    f"<td style='width:15%'>{room.room_type if room else '—'}</td>"
+                    f"<td style='text-align:right; width:12%'>{room.area_m2:.1f}</td>"
+                    f"<td style='text-align:center; width:12%'>{t.start_dt:%H:%M}</td>"
+                    f"<td style='text-align:center; width:12%'>{t.end_dt:%H:%M}</td>"
+                    f"<td style='text-align:right; width:12%'>{int(round((t.end_dt-t.start_dt).total_seconds()/60))}</td></tr>"
+                )
             text += "</table>"
-        self.report_preview.setHtml(text)
+        style = """
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #222; }
+          table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 6px 0 14px 0; }
+          th { background: #eeeeee; font-weight: 600; padding: 5px 6px; border: 1px solid #999; text-align: center; }
+          td { padding: 4px 6px; border: 1px solid #aaa; vertical-align: middle; }
+          h3 { margin: 14px 0 4px 0; }
+          p { margin: 4px 0; }
+        </style>
+        """
+        self.report_preview.setHtml(style + text)
 
     def _weather_name(self):
         return {1.0:'Ясно',1.2:'Дождь',1.5:'Снег',1.8:'Сильный дождь'}.get(float(getattr(self.project,'weather_factor',1.0)), 'Не указано')

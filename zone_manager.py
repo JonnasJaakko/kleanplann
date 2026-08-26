@@ -15,6 +15,7 @@ PRIORITY_BALANCED = "balanced"
 PRIORITY_PROXIMITY = "proximity"
 PRIORITY_AREA = "area"
 PRIORITY_COUNT = "count"
+PRIORITY_TIME = "time"
 
 def _room_center(room: Room):
     """Правильно вычисляет геометрический центроид комнаты на основе пар координат [x, y]."""

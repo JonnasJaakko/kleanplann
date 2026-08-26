@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QPushButton, QInputDialog, QMessageBox, QMenu
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
 
 PROJECTS_DIR = "projects"
 
@@ -112,9 +111,8 @@ class StartScreen(QWidget):
         delete_action.setData("delete")
         menu.triggered.connect(
             lambda action: self._delete_project_item(item) if action.text() == "Удалить" else None)
-        for a in menu.actions():
-            if a.text() == "Удалить":
-                a.setForeground(QColor(255, 0, 0))
+        # QAction не имеет setForeground(). Используем стандартное оформление QMenu,
+        # чтобы контекстное меню не зависело от внутренних API QAction.
         menu.exec(self.project_list.viewport().mapToGlobal(pos))
 
     def _open_project_item(self, item):

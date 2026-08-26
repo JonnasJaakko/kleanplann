@@ -5032,6 +5032,7 @@
   "overtime_limit": "23:00",
   "cleaning_type": "поддерживающая",
   "total_area_m2": 4001.0,
+  "schedule_locks": {},
   "calibration_line": null,
   "shifts": [
     {
@@ -5052,5 +5053,5 @@
   "priority_mode": "balanced",
   "is_dxf_loaded": false,
   "created_date": "2026-08-05T02:26:09.652190",
-  "last_modified": "2026-08-26T12:22:44.920079"
+  "last_modified": "2026-08-26T13:37:56.655898"
 }

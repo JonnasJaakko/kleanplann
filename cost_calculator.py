@@ -81,6 +81,9 @@ def _candidate_is_feasible(project, employees):
     candidate.employees_count = int(employees)
     candidate.employee_names = [f"Сотрудник {i + 1}" for i in range(employees)]
     candidate.manual_assignments = {}
+    # Ручные временные фиксации относятся к рабочему графику пользователя, а не к
+    # оценке оптимального штата. Auto-staffing должен исследовать чистую модель объекта.
+    candidate.schedule_locks = {}
     candidate.zones = _build_hypothetical_zones(candidate, employees)
     candidate.end_date = candidate.start_date
 
@@ -263,7 +266,7 @@ def estimate_required_employees(project):
         acceptable_ot = [c for c in candidates if c[1] <= overtime_threshold]
         if acceptable_ot:
             recommended = min(acceptable_ot, key=lambda x: (x[2], x[1], x[0]))[2]
-            basis = f"минимальный штат с переработкой не более {overtime_threshold:.0f} мин."
+            basis = f"минимальный штат с переработкой не более {overtime_threshold:.0f} мин"
         else:
             min_ot = min(candidates, key=lambda x: (x[1], x[2], x[0]))
             recommended = min_ot[2]
@@ -281,7 +284,7 @@ def estimate_required_employees(project):
             "feasible": True,
             "tested": tested,
             "diagnostics": diagnostics,
-            "reason": f"Рекомендован {basis}. Наименьшая прямая стоимость у варианта {cheapest} чел., но он не выбирается автоматически только ради экономии на переходах.",
+            "reason": f"Рекомендован {basis} Наименьшая прямая стоимость у варианта {cheapest} чел., но он не выбирается автоматически только ради экономии на переходах.",
         }
 
     # Не выдаём 30–50 сотрудников из-за отказа эвристики.

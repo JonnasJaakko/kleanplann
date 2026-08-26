@@ -78,12 +78,18 @@ class Shift:
 
 class CleaningTask:
     def __init__(self, room_id, floor_index, start_dt, end_dt, employee=0,
-                 is_overtime=False, transit_after_minutes=0, priority=False):
+                 is_overtime=False, transit_after_minutes=0, priority=False,
+                 occurrence=0, fixed=False, user_preferred_start=None, release_minute=0):
         self.room_id=room_id; self.floor_index=floor_index
         self.start_dt=start_dt; self.end_dt=end_dt; self.employee=employee
         self.is_overtime=bool(is_overtime)
         self.transit_after_minutes=int(max(0, transit_after_minutes))
+        self.transit_before_minutes=0
         self.priority=bool(priority)
+        self.occurrence=int(occurrence)
+        self.fixed=bool(fixed)
+        self.user_preferred_start=user_preferred_start
+        self.release_minute=int(release_minute or 0)
 
 class Project:
     def __init__(self, name="Новый проект"):
@@ -109,6 +115,10 @@ class Project:
         self.shifts=[Shift("Основная","08:00","17:00")]
         self.breaks=[("12:00","13:00")]
         self.cleaning_tasks=[]
+        # Настройки ручных правок расписания. Ключ: "floor:room:occurrence".
+        # Значения сохраняются в проекте, чтобы пользовательские предпочтения
+        # переживали повторный пересчёт расписания.
+        self.schedule_locks={}
         self.start_date=date.today(); self.end_date=date.today()+timedelta(days=7)
         self.weather_factor=1.0
         self.priority_mode="balanced"
@@ -143,6 +153,7 @@ class Project:
                 'overtime_value':self.overtime_value,'overtime_premium_percent':self.overtime_premium_percent,
                 'overtime_limit':self.overtime_limit,
                 'cleaning_type':self.cleaning_type,'total_area_m2':self.total_area_m2,
+                'schedule_locks':self.schedule_locks,
                 'calibration_line':self.calibration_line,
                 'shifts':[{'name':s.name,'start':s.start_time,'end':s.end_time} for s in self.shifts],
                 'breaks':[list(b) for b in self.breaks],
@@ -170,6 +181,18 @@ class Project:
         p.overtime_premium_percent=float(data.get('overtime_premium_percent',p.overtime_value if p.overtime_type=='percent' else 0.0))
         p.overtime_limit=str(data.get('overtime_limit','23:00'))
         p.cleaning_type=data.get('cleaning_type','поддерживающая'); p.total_area_m2=float(data.get('total_area_m2',sum(f.total_area_m2 for f in p.floors)))
+        raw_locks=data.get('schedule_locks',{}) or {}
+        p.schedule_locks={}
+        if isinstance(raw_locks, dict):
+            for key, value in raw_locks.items():
+                if not isinstance(value, dict):
+                    continue
+                item=dict(value)
+                item['employee']=int(item.get('employee',0))
+                item['fixed']=bool(item.get('fixed',False))
+                if item.get('start') is not None:
+                    item['start']=str(item.get('start'))
+                p.schedule_locks[str(key)]=item
         p.calibration_line=data.get('calibration_line')
         if data.get('shifts'): p.shifts=[Shift(s.get('name','Основная'),s.get('start','08:00'),s.get('end','17:00')) for s in data['shifts']]
         p.breaks=[(str(b[0]),str(b[1])) for b in data.get('breaks',[('12:00','13:00')])]
