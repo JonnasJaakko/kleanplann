@@ -1,87 +1,169 @@
-# sanitarnorm.py
+"""Единая модель трудоёмкости и периодичности уборки KleanPlann.
+
+Нормативы хранятся в одном месте. Погода влияет на трудоёмкость одной уборки,
+а увеличение кратности применяется только к помещениям, реально чувствительным
+к осадкам/грязи (коридоры и лестницы), а не ко всему объекту подряд.
 """
-Отраслевые нормативы времени и частоты уборки на основе ГОСТ Р 51870-2014 и СанПиН.
-Единый источник правды для планировщика и калькулятора стоимости.
-"""
+from __future__ import annotations
+
 import math
 
-# Базовое время уборки 1 кв. метра (в минутах) по ГОСТ Р 51870-2014
 GOST_TIME_PER_SQ_M = {
-    "кабинет": 0.3,    # Норма поддерживающей уборки административных зон
-    "коридор": 0.3,    # Норма для зон с транзитным трафиком
-    "зал": 0.25,       # Большие открытые пространства (высокая скорость прохода мопом/техникой)
-    "склад": 0.2,       # Минимальная влажная протирка полов
-    "санузел": 1.5,    # Повышенное время на сантехнику, зеркала и дезинфекцию
-    "кухня": 1.2,      # Зоны приема пищи (смыв жиров, дезинфекция)
-    "лестница": 0.4,  # Базовое время прохода ступеней; коэффициент сложности = 1
-    "default": 0.4
+    "кабинет": 0.30,
+    "коридор": 0.30,
+    "зал": 0.25,
+    "склад": 0.20,
+    "санузел": 1.50,
+    "кухня": 1.20,
+    "лестница": 0.40,
+    "default": 0.40,
 }
 
-# Минимальное подготовительное время на одну комнату (в минутах)
-# Включает: вход, вынос мусора, замену расходных материалов, смену салфетки/воды
 SETUP_TIME_PER_ROOM = {
     "санузел": 5.0,
     "кабинет": 3.0,
-    "default": 3.0
+    "default": 3.0,
 }
 
-# Базовая кратность (периодичность) уборок за смену
 DEFAULT_FREQUENCY_PER_DAY = {
-    "санузел": 3,      # Соответствует СанПиН для мест общего пользования
-    "коридор": 2,      # Утренний и вечерний пиковые потоки
-    "кабинет": 1,      # Один раз в смену
+    "санузел": 3,
+    "коридор": 2,
+    "кабинет": 1,
     "зал": 1,
     "склад": 1,
-    "кухня": 2,        # После обеденных перерывов
-    "лестница": 3,     # Три уборки в день
-    "default": 1
+    "кухня": 2,
+    "лестница": 2,
+    "default": 1,
 }
 
-# Коэффициенты заставленности мебелью и сложности структуры помещения
+# Повышаем кратность только там, где погода действительно увеличивает загрязнение.
+# Фактор 1.2 = дождь, 1.5 = снег, 1.8 = сильный дождь/осадки.
+WEATHER_FREQUENCY_BOOST = {
+    1.2: {"коридор": 1, "лестница": 1},
+    1.5: {"коридор": 1, "лестница": 1},
+    1.8: {"коридор": 1, "лестница": 1},
+}
+
 COMPLEXITY_FACTOR = {
-    "санузел": 1.3,
-    "кабинет": 1.1,    # Офисные столы, стулья, оргтехника
-    "коридор": 1.0,    # Свободные пространства
-    "зал": 0.9,        # Высокая доступность для инвентаря
-    "склад": 0.8,
-    "лестница": 1.0,
-    "default": 1.0
+    "санузел": 1.30,
+    "кабинет": 1.00,
+    "коридор": 1.00,
+    "зал": 1.00,
+    "склад": 0.80,
+    "кухня": 1.00,
+    "лестница": 1.00,
+    "default": 1.00,
 }
 
 DEFAULT_TRAFFIC_PER_TYPE = {
-    "санузел": 50, "коридор": 100, "кабинет": 10, "зал": 20, "склад": 2, "кухня": 30, "лестница": 100
+    "санузел": 50,
+    "коридор": 100,
+    "кабинет": 10,
+    "зал": 20,
+    "склад": 2,
+    "кухня": 30,
+    "лестница": 100,
 }
 
-def get_cleaning_time_minutes(room_type: str, area_m2: float, weather_factor: float = 1.0, cleaning_type: str = "поддерживающая") -> float:
-    """Рассчитывает точное время одной уборки помещения по ГОСТу."""
-    room_type_lower = room_type.lower() if room_type else "default"
-    
-    base_rate = GOST_TIME_PER_SQ_M.get("default")
-    for k, v in GOST_TIME_PER_SQ_M.items():
-        if k in room_type_lower:
-            base_rate = v
-            break
-            
-    comp_factor = COMPLEXITY_FACTOR.get("default")
-    for k, v in COMPLEXITY_FACTOR.items():
-        if k in room_type_lower:
-            comp_factor = v
-            break
-            
-    setup_time = SETUP_TIME_PER_ROOM.get("default")
-    for k, v in SETUP_TIME_PER_ROOM.items():
-        if k in room_type_lower:
-            setup_time = v
-            break
+_TYPE_ALIASES = {
+    "wc": "санузел", "w.c.": "санузел", "toilet": "санузел", "туалет": "санузел",
+    "bathroom": "санузел", "restroom": "санузел", "сан.узел": "санузел",
+    "office": "кабинет", "room": "кабинет", "кабинет": "кабинет",
+    "corridor": "коридор", "hallway": "коридор", "коридор": "коридор",
+    "store": "склад", "storage": "склад", "склад": "склад",
+    "hall": "зал", "lobby": "зал", "зал": "зал",
+    "kitchen": "кухня", "кухня": "кухня",
+    "stairs": "лестница", "staircase": "лестница", "лестница": "лестница",
+}
 
+
+def normalize_room_type(room_type: str) -> str:
+    value = (room_type or "").strip().lower()
+    if not value:
+        return "default"
+    for alias, canonical in _TYPE_ALIASES.items():
+        if alias in value:
+            return canonical
+    for canonical in GOST_TIME_PER_SQ_M:
+        if canonical != "default" and canonical in value:
+            return canonical
+    return "default"
+
+
+def _weather_bucket(weather_factor: float) -> float:
+    try:
+        value = float(weather_factor or 1.0)
+    except (TypeError, ValueError):
+        value = 1.0
+    return min((1.0, 1.2, 1.5, 1.8), key=lambda x: abs(x - value))
+
+
+def get_cleaning_time_minutes(
+    room_type: str,
+    area_m2: float,
+    weather_factor: float = 1.0,
+    cleaning_type: str = "поддерживающая",
+) -> float:
+    """Время одной уборки помещения в минутах."""
+    canonical = normalize_room_type(room_type)
+    base_rate = GOST_TIME_PER_SQ_M[canonical]
+    comp_factor = COMPLEXITY_FACTOR[canonical]
+    setup_time = SETUP_TIME_PER_ROOM.get(canonical, SETUP_TIME_PER_ROOM["default"])
+    try:
+        weather = max(0.5, float(weather_factor or 1.0))
+    except (TypeError, ValueError):
+        weather = 1.0
     multiplier = 2.0 if str(cleaning_type).strip().lower() == "генеральная" else 1.0
-    pure_duration = (setup_time + (area_m2 * base_rate * comp_factor * weather_factor)) * multiplier
-    return float(math.ceil(pure_duration))
+    area = max(0.0, float(area_m2 or 0.0))
+    return float(math.ceil((setup_time + area * base_rate * comp_factor * weather) * multiplier))
+
 
 def get_frequency_per_day(room_type: str) -> int:
-    """Возвращает базовую кратность уборок для типа комнаты."""
-    room_type_lower = room_type.lower() if room_type else "default"
-    for k, v in DEFAULT_FREQUENCY_PER_DAY.items():
-        if k in room_type_lower:
-            return v
-    return DEFAULT_FREQUENCY_PER_DAY["default"]
+    """Базовая нормативная кратность без учёта погоды."""
+    return int(DEFAULT_FREQUENCY_PER_DAY.get(normalize_room_type(room_type), 1))
+
+
+def get_effective_frequency(room_type: str, weather_factor: float = 1.0) -> int:
+    """Кратность с погодной поправкой без бессмысленного удвоения всех помещений."""
+    canonical = normalize_room_type(room_type)
+    base = get_frequency_per_day(canonical)
+    bucket = _weather_bucket(weather_factor)
+    boost = WEATHER_FREQUENCY_BOOST.get(bucket, {}).get(canonical, 0)
+    return max(1, base + int(boost))
+
+
+class ValidationError(ValueError):
+    pass
+
+
+def calculate_room_cleaning(room_type, area_m2, complexity=1.0, frequency=1):
+    if float(area_m2) <= 0:
+        raise ValidationError("Площадь должна быть > 0")
+    if float(complexity) <= 0:
+        raise ValidationError("Коэффициент должен быть > 0")
+    if int(frequency) <= 0:
+        raise ValidationError("Кратность должна быть > 0")
+    base = get_cleaning_time_minutes(room_type, area_m2)
+    per = float(math.ceil(base * float(complexity)))
+    return {
+        "room_type": room_type,
+        "area_m2": float(area_m2),
+        "complexity": float(complexity),
+        "frequency": int(frequency),
+        "time_per_cleaning_min": per,
+        "total_daily_min": per * int(frequency),
+    }
+
+
+def calculate_cleaning_summary(rooms):
+    rows = [calculate_room_cleaning(**item) for item in rooms]
+    total = sum(r["total_daily_min"] for r in rows)
+    return {
+        "rooms": rows,
+        "total_minutes": round(total, 1),
+        "total_hours": round(total / 60, 2),
+        "total_hours_str": f"{total / 60:.2f} ч",
+    }
+
+
+BASE_TIME_PER_SQ_M = 0.4

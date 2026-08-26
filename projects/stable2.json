@@ -33002,6 +33002,7 @@
   "overtime_type": "percent",
   "overtime_value": 50.0,
   "overtime_premium_percent": 50.0,
+  "overtime_limit": "23:00",
   "cleaning_type": "поддерживающая",
   "total_area_m2": 0.0,
   "calibration_line": null,
@@ -33029,5 +33030,5 @@
   "priority_mode": "area",
   "is_dxf_loaded": false,
   "created_date": "2026-08-05T00:39:39.640309",
-  "last_modified": "2026-08-17T20:38:24.895665"
+  "last_modified": "2026-08-26T12:54:00.097539"
 }

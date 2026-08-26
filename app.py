@@ -15,11 +15,12 @@ from PySide6.QtGui import QPixmap, QPen, QColor, QBrush, QPolygonF
 from project import Project, Wall, Room, Floor, Zone, CleaningTask, Shift
 from room_builder import (build_rooms_from_walls, detect_rooms,
                           extract_wall_centerlines, cleanup_segments, snap_wall_ends)
-from zone_manager import manual_distribution, PRIORITY_BALANCED
+from zone_manager import manual_distribution, distribute_project_zones, PRIORITY_BALANCED
 from cost_calculator import calculate_cost, estimate_required_employees
-from report_generator import generate_report
+from report_generator import generate_report, ReportGenerationError
+from schedule_validator import validate_schedule
 from sanitarnorm import COMPLEXITY_FACTOR, DEFAULT_FREQUENCY_PER_DAY, DEFAULT_TRAFFIC_PER_TYPE
-from scheduler import plan_cleaning_schedule, schedule_single_shift, compute_recommended_employees
+from scheduler import plan_cleaning_schedule, plan_cleaning_period, schedule_single_shift, compute_recommended_employees
 from calendar_export import export_tasks_csv, export_tasks_excel
 from dxf_analyzer import load_wall_segments
 from tools import PlanView, WallSegmentItem
@@ -239,7 +240,7 @@ class MainWindow(QMainWindow):
             v=dlg.values(); p=self.project
             p.total_area_m2=v['total_area']; p.salary_type=v['salary_type']; p.salary_value=v['salary_value']; p.hourly_rate=v['salary_value'] if v['salary_type']=='hour' else p.hourly_rate
             p.overtime_type=v['overtime_type']; p.overtime_value=v['overtime_value']; p.overtime_premium_percent=v['overtime_value'] if v['overtime_type']=='percent' else 0.0
-            p.cleaning_type=v['cleaning_type']; p.weather_factor=v['weather_factor']; p.shifts=[Shift('Основная',v['shift_start'],v['shift_end'])]; p.breaks=[(v['lunch_start'],v['lunch_end'])]
+            p.cleaning_type=v['cleaning_type']; p.weather_factor=v['weather_factor']; p.shifts=[Shift('Основная',v['shift_start'],v['shift_end'])]; p.breaks=[(v['lunch_start'],v['lunch_end'])]; p.overtime_limit=v['overtime_limit']
             self.refresh_plan_view()
 
     def load_plan_universal(self):
@@ -446,6 +447,7 @@ class MainWindow(QMainWindow):
     def update_floor_area(self,value):
         if self.project and self.project.floors:
             self.project.current_floor.total_area_m2=float(value)
+            self._scale_rooms()
             self.project.total_area_m2=sum(float(f.total_area_m2) for f in self.project.floors)
 
     def _sync_floor_area_widget(self):
@@ -453,19 +455,24 @@ class MainWindow(QMainWindow):
         self.floor_area.blockSignals(True); self.floor_area.setValue(float(self.project.current_floor.total_area_m2)); self.floor_area.blockSignals(False)
 
     def update_floor_combo(self):
-        self.floor_combo.blockSignals(True)
-        self.floor_combo.clear()
-        for floor in self.project.floors:
-            self.floor_combo.addItem(floor.name)
-        self.floor_combo.setCurrentIndex(self.project.current_floor_index)
-        self.floor_combo.blockSignals(False)
+        combos = [self.floor_combo]
+        if hasattr(self, 'zone_screen') and hasattr(self.zone_screen, 'floor_combo'):
+            combos.append(self.zone_screen.floor_combo)
+        for combo in combos:
+            combo.blockSignals(True); combo.clear()
+            for floor in self.project.floors:
+                combo.addItem(floor.name)
+            combo.setCurrentIndex(self.project.current_floor_index); combo.blockSignals(False)
 
     def switch_floor(self, idx):
         if idx >= 0 and idx < len(self.project.floors):
             self.project.current_floor_index = idx
             floor = self.project.current_floor
-            
             self.refresh_plan_view()
+            self._sync_floor_area_widget()
+            if self.stack.currentIndex() == 2:
+                self.refresh_zone_display()
+                self.load_report_screen()
 
     def refresh_plan_view(self):
         scene = self.plan_screen.plan_view.scene()
@@ -643,6 +650,34 @@ class MainWindow(QMainWindow):
         self.update_room_table()
         current_floor = self.project.current_floor
         current_floor.total_area_m2 = sum(r.area_m2 for r in current_floor.rooms)
+
+    def straighten_walls(self):
+        """Snap close endpoints and align nearly horizontal or vertical walls."""
+        if not self.project or not self.project.walls:
+            return
+        walls = self.project.walls
+        tolerance, angle_tolerance = 12.0, 0.12
+        points = [(w.x1, w.y1) for w in walls] + [(w.x2, w.y2) for w in walls]
+        groups = []
+        for point in points:
+            for group in groups:
+                gx = sum(p[0] for p in group) / len(group); gy = sum(p[1] for p in group) / len(group)
+                if math.hypot(point[0] - gx, point[1] - gy) <= tolerance:
+                    group.append(point); break
+            else:
+                groups.append([point])
+        def snap(point):
+            group = min(groups, key=lambda g: min(math.hypot(point[0]-p[0], point[1]-p[1]) for p in g))
+            return (sum(p[0] for p in group) / len(group), sum(p[1] for p in group) / len(group))
+        for wall in walls:
+            x1, y1 = snap((wall.x1, wall.y1)); x2, y2 = snap((wall.x2, wall.y2))
+            dx, dy = x2 - x1, y2 - y1
+            if abs(dy) <= max(tolerance, abs(dx) * angle_tolerance):
+                y1 = y2 = (y1 + y2) / 2
+            elif abs(dx) <= max(tolerance, abs(dy) * angle_tolerance):
+                x1 = x2 = (x1 + x2) / 2
+            wall.x1, wall.y1, wall.x2, wall.y2 = x1, y1, x2, y2
+        self.refresh_plan_view()
         
 
     def detect_walls_cv(self):
@@ -706,21 +741,24 @@ class MainWindow(QMainWindow):
         self._scale_rooms()
 
     def _scale_rooms(self):
-        self._scale_all_rooms()
-
-    def _scale_all_rooms(self):
-        total_area = float(getattr(self.project, "total_area_m2", 0.0) or 0.0)
-        rooms = [r for r in self.project.all_rooms() if not getattr(r, "disabled", False)]
-        if total_area <= 0 or not rooms:
-            return
+        # Each floor has its own physical area and must be scaled independently.
+        floor = self.project.current_floor
+        total_area = float(getattr(floor, "total_area_m2", 0.0) or 0.0)
+        rooms = [r for r in floor.rooms if not getattr(r, "disabled", False)]
         total_px = sum(self._polygon_area(r.points) for r in rooms)
-        if total_px <= 0:
+        if total_area <= 0 or total_px <= 0:
             return
         factor = total_area / total_px
         for room in rooms:
             room.area_m2 = self._polygon_area(room.points) * factor
-        for floor in self.project.floors:
-            floor.total_area_m2 = sum(r.area_m2 for r in floor.rooms)
+        self.project.total_area_m2 = sum(float(f.total_area_m2) for f in self.project.floors)
+
+    def _scale_all_rooms(self):
+        current = self.project.current_floor_index
+        for index in range(len(self.project.floors)):
+            self.project.current_floor_index = index
+            self._scale_rooms()
+        self.project.current_floor_index = current
 
     def _polygon_area(self, points):
         n = len(points)
@@ -856,15 +894,31 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Авторасчёт персонала", "Сначала загрузите план с распознанными помещениями.")
             return
         result = estimate_required_employees(self.project)
-        self.param_employees.setValue(result["employees"])
-        self.project.employees_count = result["employees"]
-        while len(self.project.employee_names) < result["employees"]:
+        recommended = int(result["employees"])
+        self.param_employees.setValue(recommended)
+        self.project.employees_count = recommended
+        while len(self.project.employee_names) < recommended:
             self.project.employee_names.append(f"Сотрудник {len(self.project.employee_names)+1}")
-        self.project.employee_names = self.project.employee_names[:result["employees"]]
+        self.project.employee_names = self.project.employee_names[:recommended]
+
+        # После автоматической оценки сразу строим соответствующие зоны.
+        active = [r for r in self.project.all_rooms() if not getattr(r, 'disabled', False)]
+        priority = self.project.priority_mode or PRIORITY_BALANCED
+        self.project.zones = self._distribute_active_rooms(active, priority)
+        self._apply_manual_assignments()
+
+        tested = result.get("tested", {})
+        tested_text = ", ".join(f"{n}: {'✓' if ok else '✗'}" for n, ok in sorted(tested.items()))
+        minimum = int(result.get("minimum_by_capacity", recommended))
         QMessageBox.information(self, "Авторасчёт персонала",
-            f"Рекомендуемое количество сотрудников: {result['employees']}\n"
-            f"Расчётная ежедневная нагрузка: {result['daily_minutes']:.0f} мин.\n"
-            f"Полезная смена одного сотрудника: {result['capacity_minutes']:.0f} мин.")
+            f"Рекомендуемый штат: {recommended} чел.\n"
+            f"Минимально выполнимый: {result.get('minimum_feasible') or '—'} чел.\n"
+            f"Без переработки: {result.get('zero_overtime_employees') or '—'} чел.\n\n"
+            f"Нормативная трудоёмкость: {result['daily_minutes']:.0f} мин. в день\n"
+            f"Рабочая ёмкость одного сотрудника: {result['capacity_minutes']:.0f} мин.\n"
+            f"Теоретический нижний порог: {minimum} чел.\n\n"
+            f"Проверенные варианты: {tested_text or 'нет данных'}\n\n"
+            f"Причина: {result.get('reason', '')}")
 
     # ---------- Планирование ----------
     def go_to_planning_screen(self, skip_check=False):
@@ -875,7 +929,7 @@ class MainWindow(QMainWindow):
         while len(self.project.employee_names)<self.project.employees_count: self.project.employee_names.append(f'Сотрудник {len(self.project.employee_names)+1}')
         self.project.employee_names=self.project.employee_names[:self.project.employees_count]
         priority=self.project.priority_mode or PRIORITY_BALANCED
-        self.project.zones=manual_distribution(active,[100.0/self.project.employees_count]*self.project.employees_count,priority=priority); self._apply_manual_assignments()
+        self.project.zones=self._distribute_active_rooms(active, priority); self._apply_manual_assignments()
         if skip_check: self._generate_schedule_and_show(); return
         from cost_calculator import estimate_required_employees
         recommended=estimate_required_employees(self.project)['employees']
@@ -884,18 +938,32 @@ class MainWindow(QMainWindow):
             dlg=QMessageBox(self); dlg.setWindowTitle('Недостаточно сотрудников'); dlg.setText(f'Расчёт показывает, что для объекта желательно {recommended} сотрудников. Сейчас: {self.project.employees_count}.')
             inc=dlg.addButton(f'Увеличить до {recommended}',QMessageBox.AcceptRole); keep=dlg.addButton('Продолжить с текущим',QMessageBox.ActionRole); exc=dlg.addButton('Исключить комнаты',QMessageBox.ActionRole); dlg.addButton(QMessageBox.Cancel); dlg.exec(); c=dlg.clickedButton()
             if c==inc:
-                self.param_employees.setValue(recommended); self.project.employees_count=recommended; self.project.employee_names=[f'Сотрудник {i+1}' for i in range(recommended)]; self.project.zones=manual_distribution(active,[100.0/recommended]*recommended,priority=priority); self._apply_manual_assignments(); self._generate_schedule_and_show(); return
+                self.param_employees.setValue(recommended); self.project.employees_count=recommended; self.project.employee_names=[f'Сотрудник {i+1}' for i in range(recommended)]; self.project.zones=self._distribute_active_rooms(active, priority); self._apply_manual_assignments(); self._generate_schedule_and_show(); return
             if c==exc: self._manual_exclude_mode(); return
             if c is None or c==dlg.button(QMessageBox.Cancel): return
         self._generate_schedule_and_show()
 
     def _generate_schedule_and_show(self):
-        result = schedule_single_shift(self.project, employees=self.project.employees_count, allow_partial_schedule=True)
-        self.project.cleaning_tasks = result["tasks"]
-        self.last_unscheduled = result.get("unscheduled_rooms_list", [])
+        # Production-сценарий: расписание всегда только на выбранную дату.
+        result = schedule_single_shift(
+            self.project,
+            target_date=self.project.start_date,
+            employees=self.project.employees_count,
+            allow_partial_schedule=True,
+        )
+        self.project.cleaning_tasks = list(result.get("tasks", []))
+        self.last_unscheduled = list(result.get("unscheduled_rooms_list", []))
         self.refresh_zone_display()
         self.load_report_screen()
         self.stack.setCurrentIndex(2)
+
+    def _distribute_active_rooms(self, active_rooms, priority):
+        """Единое распределение зон с учётом норматива, погоды и типа уборки."""
+        if not self.project:
+            return []
+        # disabled-комнаты уже исключаются helper'ом. active_rooms оставлен в
+        # сигнатуре для обратной совместимости с GUI.
+        return distribute_project_zones(self.project, self.project.employees_count, priority)
 
     def back_to_editor(self):
         self.stack.setCurrentIndex(1)
@@ -919,24 +987,10 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentIndex(2)
         self._exclude_mode_active = True
         scene = self.zone_view.scene()
-
-        # Удаляем старые элементы режима исключения
-        for item in scene.items():
-            data2 = item.data(2)
-            if data2 in ("exclude_label", "exclude_finish_btn"):
-                scene.removeItem(item)
-            if isinstance(item, QGraphicsRectItem) and item.data(1) == "zone_hitbox":
-                scene.removeItem(item)
-            if isinstance(item, QGraphicsTextItem) and item.data(1) == "zone_label":
-                scene.removeItem(item)
-
-        # Перерисовываем зоны без меток
+        # The confirmation action is a normal UI button, not a scene widget.
+        # This avoids invalid Qt scene objects while the schedule is refreshed.
+        self.zone_screen.exclude_finish_button.setVisible(True)
         self.refresh_zone_display()
-        for item in scene.items():
-            if isinstance(item, QGraphicsRectItem) and item.data(1) == "zone_hitbox":
-                scene.removeItem(item)
-            if isinstance(item, QGraphicsTextItem) and item.data(1) == "zone_label":
-                scene.removeItem(item)
 
         # Настраиваем клик по комнатам для исключения
         for item in scene.items():
@@ -958,24 +1012,9 @@ class MainWindow(QMainWindow):
                 # Клики перехватывает ZoneView, чтобы не зависеть от monkey-patch
                 # mousePressEvent у QGraphicsPolygonItem.
 
-        btn_finish = QPushButton("✅ Готово")
-        btn_finish.setFixedSize(130, 40)
-        btn_finish.clicked.connect(self._finish_exclude_and_continue)
-        proxy = QGraphicsProxyWidget()
-        proxy.setWidget(btn_finish)
-        proxy.setPos(scene.width() - 160, 10)
-        proxy.setZValue(101)
-        proxy.setData(2, "exclude_finish_btn")
-        proxy.setFlag(QGraphicsItem.ItemIgnoresTransformations)
-        scene.addItem(proxy)
-
     def _finish_exclude_and_continue(self):
         self._exclude_mode_active = False
-        scene = self.zone_view.scene()
-        for item in scene.items():
-            data2 = item.data(2)
-            if data2 in ("exclude_label", "exclude_finish_btn"):
-                scene.removeItem(item)
+        self.zone_screen.exclude_finish_button.setVisible(False)
         self.refresh_zone_display()
 
         active_rooms = [r for r in self.project.all_rooms() if not r.disabled]
@@ -986,14 +1025,11 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentIndex(2)
             return
 
-        from zone_manager import manual_distribution
-        percents = [100.0 / self.project.employees_count] * self.project.employees_count
-        self.project.zones = manual_distribution(active_rooms, percents, priority=self.project.priority_mode)
+        self.project.zones = self._distribute_active_rooms(active_rooms, self.project.priority_mode)
         self._apply_manual_assignments()
 
-        # Переходим на экран зон, чтобы виджеты смены существовали
-        self.stack.setCurrentIndex(2)
-        self.go_to_planning_screen(skip_check=True)
+        # Повторно строим расписание без повторного диалога о нехватке персонала.
+        self._generate_schedule_and_show()
 
     def _apply_shift_and_lunch(self):
         if not self.project.shifts:
@@ -1003,6 +1039,7 @@ class MainWindow(QMainWindow):
 
     # ---------- Экран зон / отчёт ----------
     def load_zone_screen(self):
+        self.update_floor_combo()
         self.refresh_zone_display()
         self.load_report_screen()
 
@@ -1015,7 +1052,7 @@ class MainWindow(QMainWindow):
         self.project.employees_count = self.param_employees.value()
         priority = self.priority_combo.currentData()
         self.project.priority_mode = priority
-        self.project.zones = manual_distribution(active, [100.0/self.project.employees_count]*self.project.employees_count, priority=priority)
+        self.project.zones = self._distribute_active_rooms(active, priority)
         self._apply_manual_assignments()
         self._generate_schedule_and_show()
 
@@ -1093,10 +1130,18 @@ class MainWindow(QMainWindow):
         scheduled_keys = {(t.floor_index, t.room_id) for t in tasks}
         missed = [r for r in active_rooms if (next((i for i,f in enumerate(self.project.floors) if r in f.rooms),0), r.id) not in scheduled_keys]
         disabled = [r for r in self.project.all_rooms() if getattr(r, "disabled", False)]
+        def duration(minutes):
+            minutes=int(round(minutes)); return f"{minutes//60} ч {minutes%60:02d} мин ({minutes/60:.2f} ч)"
+        salary_names={'hour':'почасовая','fixed_shift':'за смену','per_sqm':'за м²'}
+        overtime_names={'percent':'процентная надбавка','per_hour':'рублей за час'}
         text = f"<h2>{self.project.name}</h2>"
+        text += f"<p><b>Дата расписания:</b> {self.project.start_date:%d.%m.%Y}</p>"
         text += f"<p><b>Погода:</b> {self._weather_name()} &nbsp; <b>Тип:</b> {self.project.cleaning_type}</p>"
+        text += (f"<p><b>Автооценка штата:</b> {cost.get('needed_employees', self.project.employees_count)} чел. &nbsp; "
+                 f"<b>Минимально выполнимо:</b> {cost.get('staffing_minimum_feasible') or '—'} &nbsp; "
+                 f"<b>Без переработки:</b> {cost.get('staffing_zero_overtime') or '—'}</p>")
         text += f"<p><b>Смена:</b> {self.project.shifts[0].start_time if self.project.shifts else '—'}–{self.project.shifts[0].end_time if self.project.shifts else '—'} &nbsp; <b>Обед:</b> {self.project.breaks[0][0] if self.project.breaks else '—'}–{self.project.breaks[0][1] if self.project.breaks else '—'}</p>"
-        text += f"<p><b>Общее время:</b> {cost['total_time_hours']} ч &nbsp; <b>Стоимость:</b> {cost['cost_with_overtime']:.2f} руб. &nbsp; <b>Оплата:</b> {cost.get('salary_type')} / {cost.get('salary_value'):.2f} &nbsp; <b>Надбавка:</b> {cost.get('overtime_type')} / {cost.get('overtime_value'):.2f}</p>"
+        text += f"<p><b>Общее время уборки:</b> {duration(cost['total_minutes'])} &nbsp; <b>Стоимость:</b> {cost['cost_with_overtime']:.2f} ₽ &nbsp; <b>Оплата:</b> {salary_names.get(cost.get('salary_type'),'не указана')} — {cost.get('salary_value'):.2f} ₽ &nbsp; <b>Надбавка:</b> {overtime_names.get(cost.get('overtime_type'),'не указана')} — {cost.get('overtime_value'):.2f}</p>"
         if disabled or missed:
             text += "<h3 style='color:#b00020'>Помещения без уборки</h3><ul>"
             for r in disabled: text += f"<li>№{r.id+1} {r.name} — исключено пользователем</li>"
@@ -1113,12 +1158,16 @@ class MainWindow(QMainWindow):
             overtime=sum((t.end_dt-t.start_dt).total_seconds()/60 for t in emp_tasks if getattr(t,'is_overtime',False))
             name=self.project.employee_names[emp] if emp < len(self.project.employee_names) else f"Сотрудник {emp+1}"
             text += f"<h3>{name}</h3>"
-            text += f"<p><b>Время работы:</b> {worked/60:.2f} ч &nbsp; <b>Комнат:</b> {len(unique_rooms)} &nbsp; <b>Площадь:</b> {area:.1f} м² &nbsp; <b>Переработка:</b> {overtime/60:.2f} ч &nbsp; <b>Оплата:</b> {cost.get('employee_pay',{}).get(emp,0):.2f} руб.</p>"
-            text += "<table border='1' cellspacing='0' cellpadding='4' width='100%'><tr><th>№</th><th>Комната</th><th>Тип</th><th>Площадь</th><th>Начало</th><th>Конец</th><th>Длительность, мин</th></tr>"
+            overtime_text=duration(overtime) if overtime else 'нет'
+            pay=cost.get('employee_pay',{}).get(emp,0); base=cost.get('employee_base_pay',{}).get(emp,pay); extra=cost.get('employee_overtime_pay',{}).get(emp,0)
+            text += f"<p><b>Время уборки:</b> {duration(worked)} &nbsp; <b>Комнат:</b> {len(unique_rooms)} &nbsp; <b>Площадь:</b> {area:.1f} м² &nbsp; <b>Переработка:</b> {overtime_text} &nbsp; <b>Оплата:</b> {pay:.2f} ₽ ({base:.2f} ₽ — за смену, {extra:.2f} ₽ — за переработку)</p>"
+            floor_header='<th>Этаж</th>' if len(self.project.floors)>1 else ''
+            text += f"<table border='1' cellspacing='0' cellpadding='4' width='100%'><tr>{floor_header}<th>№</th><th>Комната</th><th>Тип</th><th>Площадь (м²)</th><th>Начало</th><th>Конец</th><th>Длительность (мин)</th></tr>"
             for t in emp_tasks:
                 room=next((r for f in self.project.floors for r in f.rooms if r.id==t.room_id and f.index==t.floor_index),None)
                 row_style=" style='background:#f4cccc'" if getattr(t,'is_overtime',False) else ''
-                text += f"<tr{row_style}><td>{t.room_id+1}</td><td>{room.name if room else t.room_id+1}</td><td>{room.room_type if room else '—'}</td><td>{room.area_m2:.1f} м²</td><td>{t.start_dt:%H:%M}</td><td>{t.end_dt:%H:%M}</td><td>{int(round((t.end_dt-t.start_dt).total_seconds()/60))}</td></tr>"
+                floor_cell=f'<td>{t.floor_index+1}</td>' if len(self.project.floors)>1 else ''
+                text += f"<tr{row_style}>{floor_cell}<td>{t.room_id+1}</td><td>{room.name if room else t.room_id+1}</td><td>{room.room_type if room else '—'}</td><td>{room.area_m2:.1f}</td><td>{t.start_dt:%H:%M}</td><td>{t.end_dt:%H:%M}</td><td>{int(round((t.end_dt-t.start_dt).total_seconds()/60))}</td></tr>"
             text += "</table>"
         self.report_preview.setHtml(text)
 
@@ -1139,26 +1188,55 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Успех", f"Проект сохранён в {path}")
             self.start_screen.refresh_project_list()
 
+    def _ensure_schedule_exportable(self):
+        if not self.project:
+            return False
+        validation = validate_schedule(self.project)
+        if validation.get("valid"):
+            return True
+        QMessageBox.warning(
+            self,
+            "Экспорт заблокирован",
+            "Расписание не прошло production-проверку.\n\n"
+            + validation.get("violations_summary", "Обнаружены нарушения.")
+            + "\n\nСначала исправьте штат, зоны или параметры смены.",
+        )
+        return False
+
     def generate_docx(self):
+        if not self.project or not self._ensure_schedule_exportable():
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Сохранить отчёт", "", "Word (*.docx)")
         if path:
             try:
                 generate_report(self.project, path)
                 QMessageBox.information(self, "Готово", f"Отчёт сохранён: {path}")
+            except ReportGenerationError as e:
+                QMessageBox.warning(self, "Экспорт заблокирован", str(e))
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
 
     def export_csv(self):
+        if not self.project or not self._ensure_schedule_exportable():
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Экспорт CSV", "", "CSV (*.csv)")
         if path:
-            export_tasks_csv(self.project, path)
-            QMessageBox.information(self, "Готово", f"График сохранён в {path}")
+            try:
+                export_tasks_csv(self.project, path)
+                QMessageBox.information(self, "Готово", f"График сохранён в {path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", str(e))
 
     def export_xlsx(self):
+        if not self.project or not self._ensure_schedule_exportable():
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Экспорт Excel", "", "Excel (*.xlsx)")
         if path:
-            export_tasks_excel(self.project, path)
-            QMessageBox.information(self, "Готово", f"График сохранён в {path}")
+            try:
+                export_tasks_excel(self.project, path)
+                QMessageBox.information(self, "Готово", f"График сохранён в {path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", str(e))
 
     # ---------- Экран нормативов ----------
     def load_norms_screen(self):

@@ -55,116 +55,231 @@ def _zone_centroid(centers):
     if not xs: return (0.0, 0.0)
     return (sum(xs) / len(xs), sum(ys) / len(ys))
 
-def manual_distribution(rooms: List[Room], percentages: List[float],
-                        priority: str = PRIORITY_BALANCED) -> List[Zone]:
-    """
-    Интеллектуальное зонирование с жесткой поддержкой 4-х режимов приоритетов из GUI.
-    """
-    if not rooms or not percentages: return []
-    employees = len(percentages)
-    
-    priority = (priority or "").lower().strip()
-    
-    room_time_weights = {}
-    for r in rooms:
-        freq = sanitarnorm.get_frequency_per_day(r.room_type)
-        time_per_clean = sanitarnorm.get_cleaning_time_minutes(r.room_type, r.area_m2)
-        room_time_weights[r.id] = (time_per_clean + 2.5) * freq
+def _nearest_centroid(rooms, centers):
+    return _zone_centroid([centers[r.id] for r in rooms]) if rooms else None
 
-    total_time_load = sum(room_time_weights.values())
-    total_area = sum(r.area_m2 for r in rooms)
-    
-    if total_time_load <= 0: return []
 
-    target_time_load = total_time_load / employees
-    target_area = total_area / employees
-    target_count = len(rooms) / employees
-    
+def _room_time_weight(room: Room, weather_factor: float = 1.0, cleaning_type: str = "поддерживающая") -> float:
+    """Дневная нагрузка помещения в минутах с учётом текущих условий проекта."""
+    freq = sanitarnorm.get_effective_frequency(room.room_type, weather_factor)
+    duration = sanitarnorm.get_cleaning_time_minutes(
+        room.room_type, room.area_m2, weather_factor, cleaning_type
+    )
+    # Небольшой резерв на переход к следующей задаче; он нужен именно
+    # распределителю, чтобы не создавать зоны, которые математически
+    # равны по уборке, но сильно различаются по количеству переходов.
+    return max(1.0, (duration + 1.0) * freq)
+
+
+def _proximity_distribution(rooms: List[Room], employees: int, weather_factor: float = 1.0, cleaning_type: str = "поддерживающая") -> List[List[Room]]:
+    """Компактные зоны с жёстким ограничением по трудоёмкости.
+
+    В старой версии «близость» выбирала пространственно удачные seeds, после чего
+    некоторые зоны получали в 1.5–2 раза больше/меньше реальной работы. Здесь
+    сначала строится трудовой баланс LPT, затем выполняются локальные обмены
+    помещений, пока они улучшают компактность и сохраняют допустимый диапазон
+    нагрузки.
+    """
+    if not rooms:
+        return [[] for _ in range(employees)]
+    employees = max(1, min(int(employees), len(rooms)))
     centers = {r.id: _room_center(r) for r in rooms}
-    xs = [c[0] for c in centers.values() if c]
-    ys = [c[1] for c in centers.values() if c]
-    _extent_scale = max(1.0, (max(xs) - min(xs)) + (max(ys) - min(ys))) if xs else 1.0
+    weights = {r.id: _room_time_weight(r, weather_factor, cleaning_type) for r in rooms}
+    extent = max(
+        1.0,
+        math.hypot(
+            max(c[0] for c in centers.values()) - min(c[0] for c in centers.values()),
+            max(c[1] for c in centers.values()) - min(c[1] for c in centers.values()),
+        ),
+    )
+    target = sum(weights.values()) / employees
 
-    if priority == PRIORITY_AREA:
-        pool = sorted(rooms, key=lambda r: r.area_m2, reverse=True)
-    elif priority == PRIORITY_COUNT:
-        pool = sorted(rooms, key=lambda r: r.id)
-    else:
-        pool = sorted(rooms, key=lambda r: room_time_weights[r.id], reverse=True)
-        
-    zones: List[List[Room]] = [[] for _ in range(employees)]
-    emp_toilet_counts = {i: 0 for i in range(employees)}
-    
-    for i in range(employees):
-        if i < len(pool):
-            zones[i].append(pool[i])
-            if "санузел" in (pool[i].room_type or "").lower():
-                emp_toilet_counts[i] += 1
-                
-    remaining = pool[employees:] if len(pool) > employees else []
+    # 1) Сначала гарантируем трудовой баланс.
+    zones = [[] for _ in range(employees)]
+    loads = [0.0] * employees
+    for room in sorted(rooms, key=lambda r: weights[r.id], reverse=True):
+        i = min(range(employees), key=lambda idx: (loads[idx], len(zones[idx]), idx))
+        zones[i].append(room)
+        loads[i] += weights[room.id]
 
-    while remaining:
-        best_emp, best_short = 0, -1e18
-        for i in range(employees):
-            cur_time = sum(room_time_weights[r.id] for r in zones[i])
-            cur_area = sum(r.area_m2 for r in zones[i])
-            cur_count = len(zones[i])
-            
-            if priority == PRIORITY_AREA:
-                short = (target_area - cur_area) / target_area
-            elif priority == PRIORITY_COUNT:
-                short = (target_count - cur_count) / max(1, target_count)
-            elif priority == PRIORITY_PROXIMITY:
-                short = (target_count - cur_count) / max(1, target_count)
-            else:  # BALANCED
-                short = ((target_time_load - cur_time) / target_time_load
-                         + (target_count - cur_count) / max(1, target_count)
-                         + (target_area - cur_area) / target_area)
-                         
-            if short > best_short:
-                best_short, best_emp = short, i
+    def centroid(zone):
+        if not zone:
+            return (0.0, 0.0)
+        xs = [centers[r.id][0] for r in zone]
+        ys = [centers[r.id][1] for r in zone]
+        return sum(xs) / len(xs), sum(ys) / len(ys)
 
-        cur_time = sum(room_time_weights[r.id] for r in zones[best_emp])
-        cur_area = sum(r.area_m2 for r in zones[best_emp])
-        centroid = _zone_centroid([centers[r.id] for r in zones[best_emp]])
+    def compactness(zone):
+        if len(zone) <= 1:
+            return 0.0
+        c = centroid(zone)
+        return sum(_dist(c, centers[r.id]) for r in zone) / extent
 
-        chosen_room = None
-        valid_rooms = []
-        for r in remaining:
-            is_toilet = "санузел" in (r.room_type or "").lower()
-            if is_toilet and emp_toilet_counts[best_emp] >= 2:
-                if any("санузел" not in (rm.room_type or "").lower() for rm in remaining):
+    def objective(current_zones):
+        compact = sum(compactness(z) for z in current_zones)
+        count_penalty = sum(abs(len(z) - len(rooms) / employees) for z in current_zones) * 0.015
+        return compact + count_penalty
+
+    # 2) Улучшаем географическую компактность обменами, не разрушая баланс.
+    lower = target * 0.82
+    upper = target * 1.18
+    current_obj = objective(zones)
+    for _ in range(8):
+        best = None
+        for a in range(employees):
+            if not zones[a]:
+                continue
+            for b in range(a + 1, employees):
+                if not zones[b]:
                     continue
-            valid_rooms.append(r)
-            
-        if not valid_rooms: valid_rooms = remaining
+                for ra in zones[a]:
+                    for rb in zones[b]:
+                        new_a = loads[a] - weights[ra.id] + weights[rb.id]
+                        new_b = loads[b] - weights[rb.id] + weights[ra.id]
+                        if new_a < lower or new_a > upper or new_b < lower or new_b > upper:
+                            continue
+                        zones[a].remove(ra); zones[a].append(rb)
+                        zones[b].remove(rb); zones[b].append(ra)
+                        trial = objective(zones)
+                        zones[a].remove(rb); zones[a].append(ra)
+                        zones[b].remove(ra); zones[b].append(rb)
+                        if trial + 1e-9 < current_obj and (best is None or trial < best[0]):
+                            best = (trial, a, b, ra, rb, new_a, new_b)
+        if best is None:
+            break
+        _, a, b, ra, rb, new_a, new_b = best
+        zones[a].remove(ra); zones[a].append(rb)
+        zones[b].remove(rb); zones[b].append(ra)
+        loads[a], loads[b] = new_a, new_b
+        current_obj = best[0]
 
-        if priority == PRIORITY_PROXIMITY:
-            chosen_room = min(valid_rooms, key=lambda r: _dist(centroid, centers[r.id]) if centroid else 0.0)
-        elif priority == PRIORITY_AREA:
-            chosen_room = max(valid_rooms, key=lambda r: r.area_m2)
-        elif priority == PRIORITY_COUNT:
-            chosen_room = valid_rooms[0]
-        else:  # BALANCED
-            def _score(r):
-                t_score = abs((cur_time + room_time_weights[r.id]) - target_time_load) / max(1.0, target_time_load)
-                a_score = abs((cur_area + r.area_m2) - target_area) / max(1.0, target_area)
-                c_score = abs((len(zones[best_emp]) + 1) - target_count) / max(1.0, target_count)
-                d_score = (_dist(centroid, centers[r.id]) if centroid else 0.0) / max(1.0, _extent_scale)
-                return t_score * 0.3 + a_score * 0.3 + c_score * 0.2 + d_score * 0.2
-            chosen_room = min(valid_rooms, key=_score)
+    # 3) Ещё один балансирующий проход: если swap улучшает загрузку и не делает
+    # географию заметно хуже, предпочтение получает более ровная нагрузка.
+    for _ in range(3):
+        changed = False
+        heavy = sorted(range(employees), key=lambda i: loads[i], reverse=True)
+        light = sorted(range(employees), key=lambda i: loads[i])
+        for a in heavy:
+            if loads[a] <= target * 1.10:
+                continue
+            for b in light:
+                if a == b or loads[b] >= target * 0.92:
+                    continue
+                candidate = min(zones[a], key=lambda r: weights[r.id])
+                new_a = loads[a] - weights[candidate.id]
+                new_b = loads[b] + weights[candidate.id]
+                if new_a < lower or new_b > upper:
+                    continue
+                before = objective(zones)
+                zones[a].remove(candidate); zones[b].append(candidate)
+                after = objective(zones)
+                # Разрешаем небольшой рост пути, если он существенно выравнивает load.
+                if after <= before + 0.08:
+                    loads[a], loads[b] = new_a, new_b
+                    changed = True
+                    break
+                zones[b].remove(candidate); zones[a].append(candidate)
+            if changed:
+                break
+        if not changed:
+            break
+    return zones
 
-        if "санузел" in (chosen_room.room_type or "").lower():
-            emp_toilet_counts[best_emp] += 1
 
-        zones[best_emp].append(chosen_room)
-        remaining.remove(chosen_room)
+def _balanced_distribution(rooms: List[Room], employees: int, mode: str, weather_factor: float = 1.0, cleaning_type: str = "поддерживающая") -> List[List[Room]]:
+    if not rooms:
+        return [[] for _ in range(employees)]
+    weights = {r.id: _room_time_weight(r, weather_factor, cleaning_type) for r in rooms}
+    areas = [0.0] * employees
+    loads = [0.0] * employees
+    zones = [[] for _ in range(employees)]
 
-    result: List[Zone] = []
+    if mode == PRIORITY_COUNT:
+        ordered = sorted(rooms, key=lambda r: r.id)
+        for idx, room in enumerate(ordered):
+            i = idx % employees
+            zones[i].append(room); loads[i] += weights[room.id]; areas[i] += room.area_m2
+        return zones
+
+    if mode == PRIORITY_AREA:
+        ordered = sorted(rooms, key=lambda r: r.area_m2, reverse=True)
+        for room in ordered:
+            i = min(range(employees), key=lambda idx: (areas[idx], loads[idx], idx))
+            zones[i].append(room); loads[i] += weights[room.id]; areas[i] += room.area_m2
+        return zones
+
+    # Balanced: longest-processing-time first on actual daily labour minutes.
+    # Это гарантирует, что при разумном количестве комнат не останется зоны с 1 комнатой
+    # только потому, что другая зона оказалась геометрически удачнее.
+    ordered = sorted(rooms, key=lambda r: weights[r.id], reverse=True)
+    for room in ordered:
+        i = min(range(employees), key=lambda idx: (loads[idx], areas[idx], len(zones[idx]), idx))
+        zones[i].append(room)
+        loads[i] += weights[room.id]
+        areas[i] += room.area_m2
+    return zones
+
+
+def manual_distribution(rooms: List[Room], percentages: List[float],
+                        priority: str = PRIORITY_BALANCED, weather_factor: float = 1.0,
+                        cleaning_type: str = "поддерживающая") -> List[Zone]:
+    """Распределяет помещения между сотрудниками по выбранному режиму.
+
+    Функция не допускает экстремальных зон: при наличии достаточного количества
+    помещений нагрузка сначала балансируется по реальному времени уборки, затем
+    учитываются площадь/количество/близость.
+    """
+    if not rooms or not percentages:
+        return []
+    employees = max(1, len(percentages))
+    priority = (priority or PRIORITY_BALANCED).lower().strip()
+    if priority == PRIORITY_PROXIMITY:
+        zones = _proximity_distribution(rooms, employees, weather_factor, cleaning_type)
+    elif priority in (PRIORITY_AREA, PRIORITY_COUNT):
+        zones = _balanced_distribution(rooms, employees, priority, weather_factor, cleaning_type)
+    else:
+        zones = _balanced_distribution(rooms, employees, PRIORITY_BALANCED, weather_factor, cleaning_type)
+
+    result = []
     for emp_idx, emp_rooms in enumerate(zones):
-        if not emp_rooms: continue
+        if not emp_rooms:
+            continue
         color = ZONE_COLORS[emp_idx % len(ZONE_COLORS)]
-        result.append(Zone(emp_idx, f"Сотрудник {emp_idx+1}",
-                           [r.id for r in emp_rooms], color=color,
-                           employee_index=emp_idx))
+        result.append(Zone(
+            emp_idx,
+            f"Сотрудник {emp_idx + 1}",
+            [r.id for r in emp_rooms],
+            color=color,
+            employee_index=emp_idx,
+        ))
     return result
+
+
+def distribute_project_zones(project, employees: int, priority: str = None) -> List[Zone]:
+    """Строит зоны по всему проекту с учётом фактических нормативов проекта.
+
+    Функция является единым API для GUI и staffing-модели: одинаковый проект
+    должен получать одинаковое начальное разбиение зон.
+    """
+    employees = max(1, int(employees))
+    priority = (priority or getattr(project, "priority_mode", PRIORITY_BALANCED) or PRIORITY_BALANCED).lower()
+    weather_factor = float(getattr(project, "weather_factor", 1.0) or 1.0)
+    cleaning_type = getattr(project, "cleaning_type", "поддерживающая")
+    zones = []
+    zone_id = 0
+    shares = [100.0 / employees] * employees
+    for floor_index, floor in enumerate(getattr(project, "floors", []) or []):
+        rooms = [r for r in floor.rooms if not getattr(r, "disabled", False)]
+        if not rooms:
+            continue
+        local = manual_distribution(
+            rooms, shares, priority=priority,
+            weather_factor=weather_factor, cleaning_type=cleaning_type,
+        )
+        for zone in local:
+            zone.id = zone_id
+            zone_id += 1
+            zone.floor_index = floor_index
+            zone.name = f"Сотрудник {zone.employee_index + 1} — этаж {floor_index + 1}"
+            zones.append(zone)
+    return zones

@@ -1,5 +1,5 @@
 """Объединённый экран зон ответственности и отчётности."""
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QGraphicsScene,QGraphicsView,QTextEdit,QSplitter,QMenu,QGraphicsPolygonItem
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QGraphicsScene,QGraphicsView,QTextEdit,QSplitter,QDialog,QDialogButtonBox,QGraphicsPolygonItem,QGraphicsProxyWidget
 from PySide6.QtCore import Qt,QPoint,QPointF
 from zone_manager import PRIORITY_BALANCED,PRIORITY_PROXIMITY,PRIORITY_AREA,PRIORITY_COUNT
 
@@ -14,6 +14,9 @@ class ZoneView(QGraphicsView):
         if e.button()==Qt.RightButton:
             self._pan=True; self._pan_pos=e.position().toPoint(); self.setCursor(Qt.ClosedHandCursor); e.accept(); return
         if e.button()==Qt.LeftButton and getattr(self.main,'_exclude_mode_active',False):
+            # The confirmation button must receive its own click, not be treated as a room.
+            if isinstance(self.itemAt(e.position().toPoint()), QGraphicsProxyWidget):
+                super().mousePressEvent(e); return
             pos=self.mapToScene(e.position().toPoint())
             if self.main.toggle_excluded_room_at_scene(pos): e.accept(); return
         super().mousePressEvent(e)
@@ -41,8 +44,14 @@ class ZoneScreen(QWidget):
         splitter=QSplitter(Qt.Horizontal); self.zone_scene=QGraphicsScene(); self.zone_view=ZoneView(self.zone_scene,self.main); splitter.addWidget(self.zone_view)
         panel=QWidget(); pv=QVBoxLayout(panel); pv.addWidget(QLabel('<b>Приоритет распределения зон</b>'))
         self.priority_combo=QComboBox(); self.priority_combo.addItem('Сбалансированно',PRIORITY_BALANCED); self.priority_combo.addItem('Близость комнат',PRIORITY_PROXIMITY); self.priority_combo.addItem('Площадь',PRIORITY_AREA); self.priority_combo.addItem('Количество комнат',PRIORITY_COUNT); self.priority_combo.currentIndexChanged.connect(self.main.recalculate_zones); pv.addWidget(self.priority_combo)
+        floor_row=QHBoxLayout(); floor_row.addWidget(QLabel('Этаж:')); self.floor_combo=QComboBox(); self.floor_combo.currentIndexChanged.connect(self.main.switch_floor); floor_row.addWidget(self.floor_combo); pv.addLayout(floor_row)
+        self.exclude_finish_button=QPushButton('✓ Готово: обновить расписание'); self.exclude_finish_button.setVisible(False); self.exclude_finish_button.clicked.connect(self.main._finish_exclude_and_continue); pv.addWidget(self.exclude_finish_button)
         self.report_preview=QTextEdit(readOnly=True); self.report_preview.setMinimumWidth(430); pv.addWidget(self.report_preview,1)
         buttons=QHBoxLayout(); back=QPushButton('← Назад в редактор'); back.clicked.connect(self.main.back_to_editor); export=QPushButton('Экспорт'); export.clicked.connect(self.show_export_menu); save=QPushButton('Сохранить'); save.clicked.connect(self.main.save_project); buttons.addWidget(back); buttons.addWidget(export); buttons.addWidget(save); pv.addLayout(buttons)
         splitter.addWidget(panel); splitter.setStretchFactor(0,3); splitter.setStretchFactor(1,2); layout.addWidget(splitter)
     def show_export_menu(self):
-        menu=QMenu(self); menu.addAction('В Word (.docx)',self.main.generate_docx); menu.addAction('В CSV (.csv)',self.main.export_csv); menu.addAction('В Excel (.xlsx)',self.main.export_xlsx); menu.exec(self.mapToGlobal(self.sender().rect().bottomLeft()) if self.sender() else self.rect().center())
+        dialog=QDialog(self); dialog.setWindowTitle('Экспорт отчёта'); dialog.setMinimumWidth(300)
+        layout=QVBoxLayout(dialog); layout.addWidget(QLabel('Выберите формат файла:'))
+        for title, action in [('Word (.docx)', self.main.generate_docx), ('CSV (.csv)', self.main.export_csv), ('Excel (.xlsx)', self.main.export_xlsx)]:
+            button=QPushButton(title); button.clicked.connect(lambda checked=False, fn=action: (dialog.accept(), fn())); layout.addWidget(button)
+        cancel=QDialogButtonBox(QDialogButtonBox.Cancel); cancel.rejected.connect(dialog.reject); layout.addWidget(cancel); dialog.exec()

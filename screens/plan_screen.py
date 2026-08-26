@@ -21,12 +21,13 @@ class ProjectSettingsDialog(QDialog):
         self.weather=QComboBox(); self.weather.addItems(['Ясно (x1.0)','Дождь (x1.2)','Снег (x1.5)','Сильный дождь (x1.8)']); self.weather.setCurrentIndex({1.0:0,1.2:1,1.5:2,1.8:3}.get(float(getattr(p,'weather_factor',1.0)),0))
         def te(value):
             w=QTimeEdit(QTime.fromString(value,'HH:mm')); w.setDisplayFormat('HH:mm'); return w
-        self.shift_start=te(p.shifts[0].start_time if p.shifts else '08:00'); self.shift_end=te(p.shifts[0].end_time if p.shifts else '17:00'); self.lunch_start=te(p.breaks[0][0] if p.breaks else '12:00'); self.lunch_end=te(p.breaks[0][1] if p.breaks else '13:00')
+        self.shift_start=te(p.shifts[0].start_time if p.shifts else '08:00'); self.shift_end=te(p.shifts[0].end_time if p.shifts else '17:00'); self.lunch_start=te(p.breaks[0][0] if p.breaks else '12:00'); self.lunch_end=te(p.breaks[0][1] if p.breaks else '13:00'); self.overtime_limit=te(getattr(p, 'overtime_limit', '23:00'))
         form.addRow('Суммарная площадь здания:',self.total_area)
         form.addRow('Вид оплаты сотрудникам:',self.salary_type); form.addRow('Значение оплаты:',self.salary_value); form.addRow('',self.salary_hint)
         form.addRow('Вид надбавки за переработку:',self.overtime_type); form.addRow('Значение надбавки:',self.overtime_value)
         form.addRow('Тип уборки:',self.cleaning_type); form.addRow('Погода:',self.weather)
         form.addRow('Смена с:',self.shift_start); form.addRow('Смена до:',self.shift_end); form.addRow('Обед с:',self.lunch_start); form.addRow('Обед до:',self.lunch_end)
+        form.addRow('Ограничение по переработке до:', self.overtime_limit)
         lay.addLayout(form); self._update_salary_hint()
         hint=QLabel('При генеральной уборке коэффициенты трудоёмкости автоматически умножаются на 2.'); hint.setWordWrap(True); lay.addWidget(hint)
         buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel); buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); lay.addWidget(buttons)
@@ -37,7 +38,7 @@ class ProjectSettingsDialog(QDialog):
         if QMessageBox.question(self,'Удалить план','Удалить план, этажи, комнаты, зоны и расписание?')==QMessageBox.Yes: self.main.delete_plan_data(); self.accept()
     def values(self):
         wt=self.weather.currentText(); factor=1.0 if '1.0' in wt else 1.2 if '1.2' in wt else 1.5 if '1.5' in wt else 1.8
-        return {'total_area':self.total_area.value(),'salary_type':self.salary_type.currentData(),'salary_value':self.salary_value.value(),'overtime_type':self.overtime_type.currentData(),'overtime_value':self.overtime_value.value(),'cleaning_type':self.cleaning_type.currentText(),'weather_factor':factor,'shift_start':self.shift_start.time().toString('HH:mm'),'shift_end':self.shift_end.time().toString('HH:mm'),'lunch_start':self.lunch_start.time().toString('HH:mm'),'lunch_end':self.lunch_end.time().toString('HH:mm')}
+        return {'total_area':self.total_area.value(),'salary_type':self.salary_type.currentData(),'salary_value':self.salary_value.value(),'overtime_type':self.overtime_type.currentData(),'overtime_value':self.overtime_value.value(),'cleaning_type':self.cleaning_type.currentText(),'weather_factor':factor,'shift_start':self.shift_start.time().toString('HH:mm'),'shift_end':self.shift_end.time().toString('HH:mm'),'lunch_start':self.lunch_start.time().toString('HH:mm'),'lunch_end':self.lunch_end.time().toString('HH:mm'),'overtime_limit':self.overtime_limit.time().toString('HH:mm')}
 
 class PlanScreen(QWidget):
     def __init__(self,main_window): super().__init__(); self.main=main_window; self.setup_ui()

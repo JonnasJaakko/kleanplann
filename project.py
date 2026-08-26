@@ -102,6 +102,7 @@ class Project:
         self.overtime_type="percent"  # percent | per_hour
         self.overtime_value=50.0
         self.overtime_premium_percent=50.0
+        self.overtime_limit="23:00"
         self.cleaning_type="поддерживающая"
         self.total_area_m2=0.0
         self.calibration_line=None
@@ -113,6 +114,7 @@ class Project:
         self.priority_mode="balanced"
         self.is_dxf_loaded=False
         self.created_date=datetime.now().isoformat(); self.last_modified=self.created_date
+        self._project_dir = ""
     @property
     def walls(self): return self.current_floor.walls
     @walls.setter
@@ -139,6 +141,7 @@ class Project:
                 'salary_type':self.salary_type,'salary_value':self.salary_value,
                 'hourly_rate':self.hourly_rate,'overtime_type':self.overtime_type,
                 'overtime_value':self.overtime_value,'overtime_premium_percent':self.overtime_premium_percent,
+                'overtime_limit':self.overtime_limit,
                 'cleaning_type':self.cleaning_type,'total_area_m2':self.total_area_m2,
                 'calibration_line':self.calibration_line,
                 'shifts':[{'name':s.name,'start':s.start_time,'end':s.end_time} for s in self.shifts],
@@ -165,6 +168,7 @@ class Project:
         p.hourly_rate=float(data.get('hourly_rate',p.salary_value))
         p.overtime_type=data.get('overtime_type','percent'); p.overtime_value=float(data.get('overtime_value',data.get('overtime_premium_percent',50.0)))
         p.overtime_premium_percent=float(data.get('overtime_premium_percent',p.overtime_value if p.overtime_type=='percent' else 0.0))
+        p.overtime_limit=str(data.get('overtime_limit','23:00'))
         p.cleaning_type=data.get('cleaning_type','поддерживающая'); p.total_area_m2=float(data.get('total_area_m2',sum(f.total_area_m2 for f in p.floors)))
         p.calibration_line=data.get('calibration_line')
         if data.get('shifts'): p.shifts=[Shift(s.get('name','Основная'),s.get('start','08:00'),s.get('end','17:00')) for s in data['shifts']]
@@ -178,6 +182,10 @@ class Project:
         return p
     def save_to_file(self,filepath):
         with open(filepath,'w',encoding='utf-8') as f: json.dump(self.to_dict(),f,ensure_ascii=False,indent=2)
+        self._project_dir = os.path.dirname(os.path.abspath(filepath))
     @classmethod
     def load_from_file(cls,filepath):
-        with open(filepath,'r',encoding='utf-8') as f: return cls.from_dict(json.load(f))
+        with open(filepath,'r',encoding='utf-8') as f:
+            project = cls.from_dict(json.load(f))
+        project._project_dir = os.path.dirname(os.path.abspath(filepath))
+        return project

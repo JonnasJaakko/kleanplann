@@ -1,757 +1,530 @@
-"""Распознавание помещений на планах пожарной эвакуации (российский стандарт).
-
-Версия 3: цельные стены вместо "осколков", закрытие дверных проёмов без
-заливки крупных проходов, детекция лестниц как групп параллельных линий,
-устойчивая постобработка (склейка соседних осколков одной комнаты).
-
-Публичные функции (сигнатуры и форматы возврата не менялись):
-    detect_floor_plan(image, min_area_px=None) -> dict
-    detect_walls(image) -> List[Polygon]
-    detect_room_candidates(image) -> List[dict]
-    draw_walls(image, contours, color=(0, 0, 255), thickness=2) -> np.ndarray
 """
+image_processor — превращает растровый план эвакуации (фото/скрин плана
+пожарной безопасности) в разметку этажа на комнаты, в духе того, как это
+делает room_builder.py для DXF, но на входе — картинка, а не набор
+отрезков.
+
+Публичный интерфейс (его ждёт app.py):
+
+    img = load_image(path)                 # -> numpy BGR massiv (cv2)
+    result = detect_floor_plan(img)         # -> {"rooms": [...]}
+
+    result["rooms"] — список словарей:
+        {"points": [(x, y), ...], "room_type": ""}
+    Координаты — в пикселях исходного изображения, то есть их можно
+    напрямую использовать как координаты сцены (как уже делает app.py,
+    оборачивая точки в Wall/Room).
+
+------------------------------------------------------------------
+Идея алгоритма (коротко)
+------------------------------------------------------------------
+Автор задачи сформулировал 4 правила — они и есть каркас алгоритма:
+
+  1. "Имеют значение только стены" — всё остальное мусор.
+     -> Стены на таких планах рисуют тёмными (чёрными/тёмно-серыми)
+        линиями, а весь "мусор" (зелёные стрелки эвакуации, красные
+        значки огнетушителей/телефонов, жёлтые треугольники,
+        текстовые подписи) — цветной. Поэтому сперва строится
+        цветовая маска "тёмное и малонасыщенное" (см. _wall_mask),
+        а затем из неё дополнительно вычищаются компактные пятна
+        (иконки) — они не похожи на стены ни формой, ни размером
+        (см. _remove_small_blobs).
+
+  2. "Итог должен быть как на эталонном скриншоте" — то есть чистые
+     прямоугольные закрашенные комнаты с небольшим числом углов,
+     а не шумная пиксельная лесенка.
+     -> Контур каждой найденной комнаты дополнительно (a) упрощается
+        (cv2.approxPolyDP), (b) "ортогонализируется" — рёбра, близкие
+        к горизонтали/вертикали, принудительно выравниваются, чтобы
+        углы были ровно 90° даже если при растеризации/закрытии
+        проёмов появилось небольшое отклонение, (c) склеиваются
+        точки, лежащие ближе допуска друг к другу.
+
+  3. "Разметка стен происходит поверх стен на изображении".
+     -> Стены не восстанавливаются как тонкие осевые линии с
+        последующим "раздуванием" (это давало бы смещение), а сразу
+        берутся как есть — толстая закрашенная область (маска),
+        полученная из пикселей картинки. Граница комнаты — это
+        граница между этой маской и свободным пространством, то есть
+        она проходит ровно по внутреннему краю нарисованных стен.
+
+  4. "Сначала общий контур этажа, потом комнаты внутри, потом
+     склейка близких точек и стен".
+     -> Именно в этом порядке и работает пайплайн:
+        а) строится общая "масса" стен (union всех закрашенных
+           контуров стен) — это и есть каркас этажа;
+        б) в этой массе замыкаются дверные проёмы (staged closing,
+           см. _close_gaps) — без этого шага соседние комнаты
+           остаются связаны через открытые дверные проёмы и не
+           разделяются;
+        в) от прямоугольника, охватывающего всё здание, отнимается
+           масса стен — то, что осталось и не касается внешней рамки
+           (не "улица"/фон), и есть отдельные комнаты;
+        г) для каждой комнаты — очистка контура и склейка близких
+           точек/рёбер (см. правило 2).
+
+------------------------------------------------------------------
+Почему проёмы замыкаются именно так (staged closing)
+------------------------------------------------------------------
+Если сразу "заплыть" все проёмы одним большим радиусом — слипнется
+всё подряд: и настоящие двери, и просто широкие открытые проходы
+(коридоры без дверей), которые слипать нельзя — на эталоне коридор
+остаётся отдельным помещением, а не частью соседней комнаты.
+
+Поэтому проёмы закрываются по нарастающей: сначала совсем маленьким
+радиусом (закрываются только самые узкие щели — типичный дверной
+проём), потом чуть больше, и так далее. К моменту, когда радиус
+дорастает до размера, сопоставимого с шириной открытого коридора,
+коридор уже отрезан от примыкающих дверных проёмов предыдущими,
+более ранними шагами, и остаётся целым, отдельным помещением, а не
+сливается с соседями.
+
+На каждом шаге патч "заклеивания" проверяется по площади — слишком
+большие заплатки (значит, это не дверь, а широкий проём/коридор)
+отбраковываются и не применяются.
+
+Это тот же принцип, что и в room_builder._close_openings (там —
+для векторных данных DXF), только реализован в растре поверх маски,
+полученной прямо из пикселей картинки.
+"""
+
 from __future__ import annotations
 
 import math
-import os
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
 
 Point = Tuple[float, float]
-Polygon = List[Point]
-
-# ================== ГЛОБАЛЬНЫЕ НАСТРОЙКИ (можно подстраивать) ==================
-DEBUG = True                 # True -> в папку DEBUG_DIR сохраняются промежуточные маски
-DEBUG_DIR = "debug"
-
-# --- Постобработка / склейка ---
-MERGE_CLOSE_ROOMS = True         # Склеивать полигоны-осколки одной комнаты
-MERGE_DISTANCE_FACTOR = 0.02     # Доля от min(h, w) - порог склейки по центрам
-MERGE_OVERLAP_IOU = 0.15         # Доп. порог склейки по пересечению bbox (IoU)
-SMALL_FRAGMENT_AREA_FACTOR = 0.15  # Осколок < этой доли от медианной площади считается "мелким"
-                                    # и агрессивно ищет соседа для склейки
-
-# --- Фон / рамка листа ---
-# Полосы фона вокруг здания (край листа, области за пределами постройки) не
-# должны попадать в список комнат. Полигон отбраковывается, если он либо
-# занимает почти весь лист целиком, либо представляет собой тонкую полосу,
-# растянутую почти на всю ширину/высоту изображения.
-BACKGROUND_FULL_SPAN_RATIO = 0.95   # bbox по обеим осям > этой доли размера листа -> фон
-BACKGROUND_BAND_SPAN_RATIO = 0.85   # bbox по одной оси > этой доли размера листа
-BACKGROUND_BAND_THIN_FACTOR = 0.06  # ...и при этом другая сторона тоньше этой доли min(h, w)
-# Доп. эвристика для "остаточных" полос фона, которые НЕ тянутся почти на
-# весь лист (например, пустое поле сбоку от здания на неполную высоту):
-# длинная и почти идеально прямоугольная (без выступов/ниш) область с
-# большим соотношением сторон — подозрительна. Если легитимные узкие
-# коридоры в проекте так же вытянуты, увеличьте BACKGROUND_ASPECT_MAX.
-BACKGROUND_ASPECT_MAX = 5.0
-BACKGROUND_COMPACTNESS_MIN = 0.65
-
-# --- Сглаживание контуров комнат ---
-POLY_SIMPLIFY_EPS_FACTOR = 0.006    # Доля от периметра для approxPolyDP (больше = меньше вершин)
-ORTHOGONAL_SNAP = True              # Подравнивать почти гориз./вертик. рёбра под 90°
-ORTHOGONAL_ANGLE_TOL_DEG = 9        # Допуск угла для подравнивания (градусы от 0/90)
-
-# --- Стены: во сколько раз кластеризовать/закрывать линии относительно
-#     "базового" масштаба изображения (1.0 = изображение ~1000x1000 px) ---
-WALL_CLOSE_KERNEL_FACTOR = 1.0    # Размер ядра морфологического закрытия стен
-WALL_MIN_COMPONENT_RATIO = 0.02   # Доля от площади наибольшего компонента стен,
-                                   # ниже которой компонент (иконка/текст/мусор) удаляется
-
-# --- Дверные проёмы ---
-DOOR_GAP_MAX_FACTOR = 0.045       # Макс. длина закрываемого проёма (доля от min(h, w))
-DOOR_GAP_MIN_FACTOR = 0.006       # Мин. толщина ядра для первого прохода закрытия
-DOOR_GAP_ASPECT_MAX = 4.5         # Проём не должен быть слишком "квадратным мусором"
-
-# --- Лестницы ---
-STAIR_MIN_PARALLEL_LINES = 3      # Минимум параллельных коротких линий в группе
-STAIR_LINE_LEN_FACTOR = 0.012     # Мин. длина линии-ступени (доля от min(h, w))
-STAIR_CLUSTER_GAP_FACTOR = 0.01   # Допустимый разброс между соседними ступенями
-
-# ================================================================================
 
 
-# ===== Вспомогательные функции =====
-def _odd(v: float, minimum: int = 3) -> int:
-    v = max(minimum, int(round(v)))
-    return v if v % 2 else v + 1
+# ============================================================================
+# 1. Загрузка изображения
+# ============================================================================
+
+def load_image(path: str):
+    """
+    Загружает изображение в BGR (как cv2.imread), но умеет читать пути
+    с не-ASCII символами (кириллица в имени файла/папки) — обычный
+    cv2.imread на Windows с такими путями возвращает None.
+    """
+    data = np.fromfile(path, dtype=np.uint8)
+    img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"Не удалось прочитать изображение: {path}")
+    return img
 
 
-def _img_scale(h: int, w: int) -> float:
-    """Масштаб относительно "эталонного" изображения ~1000x1000px."""
-    return max(0.4, math.sqrt((w * h) / 1_000_000.0))
+# ============================================================================
+# 2. Цветовая маска стен + чистка "мусора" (иконок/стрелок/текста)
+# ============================================================================
+
+def _wall_mask(img, v_thresh: int = 110, chroma_thresh: int = 25):
+    """
+    Пиксель считается "стеной", если он одновременно:
+      - достаточно тёмный (максимум каналов BGR < v_thresh);
+      - достаточно "серый", т.е. малонасыщенный (разброс между
+        максимальным и минимальным каналом BGR <= chroma_thresh).
+
+    Это НЕ HSV-насыщенность: для очень тёмных пикселей относительная
+    насыщенность (S в HSV) может ложно взлетать почти до максимума
+    даже на однопиксельном JPEG-шуме (если V близко к 0, любая мелкая
+    разница каналов даёт большое relative S). Абсолютный разброс
+    каналов (chroma = max-min) от этой проблемы не страдает и
+    надёжно отделяет чёрно-серые стены от цветных значков/стрелок.
+    """
+    b, g, r = cv2.split(img)
+    mx = np.maximum(np.maximum(b, g), r).astype(np.int16)
+    mn = np.minimum(np.minimum(b, g), r).astype(np.int16)
+    chroma = mx - mn
+    mask = ((mx < v_thresh) & (chroma <= chroma_thresh)).astype(np.uint8) * 255
+
+    # Небольшое замыкание (радиус 1), чтобы залатать единичные
+    # проколы от JPEG-шума в сплошных линиях стен — иначе тонкая
+    # стена может распасться на цепочку мелких компонент и попасть
+    # под чистку "мусора" на следующем шаге.
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
+    return mask
 
 
-def _debug_save(name: str, mask: np.ndarray) -> None:
-    if not DEBUG:
-        return
-    os.makedirs(DEBUG_DIR, exist_ok=True)
-    cv2.imwrite(os.path.join(DEBUG_DIR, name), mask)
+def _remove_small_blobs(
+    mask,
+    min_elongation: float = 2.2,
+    min_dim_frac: float = 0.06,
+    min_area_frac: float = 0.01,
+):
+    """
+    Убирает из маски компактные пятна — это условные обозначения
+    (огнетушитель, телефон, треугольник опасности, пиктограммы
+    "выход"/человечек и т.п.), а не стены.
 
-
-def _remove_small_components(mask: np.ndarray, min_area: int, connectivity: int = 8) -> np.ndarray:
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity)
+    Стены (в отличие от значков) почти всегда вытянутые (сильно
+    отличается длинная и короткая сторона bbox) ИЛИ являются частью
+    большой связной сети стен, покрывающей значительную часть
+    изображения. Значок — наоборот, компактный (близкий к квадрату)
+    и маленький. Компонента сохраняется, если выполняется хотя бы
+    одно из условий:
+      - вытянутость (long/short bbox side) >= min_elongation;
+      - самая длинная сторона bbox >= min_dim_frac * диагональ кадра;
+      - площадь компоненты >= min_area_frac * площадь кадра.
+    """
+    h, w = mask.shape[:2]
+    diag = math.hypot(h, w)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     out = np.zeros_like(mask)
     for i in range(1, n):
-        if stats[i, cv2.CC_STAT_AREA] >= min_area:
+        bw = stats[i, cv2.CC_STAT_WIDTH]
+        bh = stats[i, cv2.CC_STAT_HEIGHT]
+        area = stats[i, cv2.CC_STAT_AREA]
+        elongation = max(bw, bh) / max(1, min(bw, bh))
+        big_dim = max(bw, bh) >= min_dim_frac * diag
+        big_area = area >= min_area_frac * (h * w)
+        if elongation >= min_elongation or big_dim or big_area:
             out[labels == i] = 255
     return out
 
 
-def _keep_dominant_components(mask: np.ndarray, ratio: float, connectivity: int = 8) -> np.ndarray:
-    """Оставляет крупнейший компонент стен + все компоненты, чья площадь не
-    ничтожна по сравнению с ним. Отсекает иконки/текст/мусор внутри комнат,
-    которые не связаны с общей сетью стен."""
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity)
+# ============================================================================
+# 3. Оценка толщины стен
+# ============================================================================
+
+def _estimate_thickness(mask) -> float:
+    """
+    Оценивает характерную толщину стен (в пикселях исходной картинки).
+
+    Берётся самая большая связная компонента маски (это основная сеть
+    стен), для неё считается distance transform (расстояние каждого
+    "стенного" пикселя до ближайшего фона). Толщина стены в её
+    прямом (не угловом/не стыковом) участке — это удвоенное значение
+    distance transform в её "оси".
+
+    Медиана здесь занижает оценку: у тонких перегородок и штриховки
+    лестниц (диагональные короткие штрихи) пикселей много, и они
+    "перетягивают" медиану вниз. Поэтому берётся достаточно высокий
+    процентиль (90-й) — он ближе к толщине основных, "весомых" стен,
+    но не настолько высок, чтобы попасть на раздутые стыки/углы.
+    """
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if n <= 1:
-        return mask
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    if areas.size == 0:
-        return mask
-    max_area = float(areas.max())
-    out = np.zeros_like(mask)
-    for i in range(1, n):
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area >= max_area * ratio:
-            out[labels == i] = 255
-    return out
+        return 3.0
+    areas = [(i, stats[i, cv2.CC_STAT_AREA]) for i in range(1, n)]
+    areas.sort(key=lambda t: -t[1])
+    biggest = areas[0][0]
+    main = np.uint8(labels == biggest) * 255
+    dist = cv2.distanceTransform(main, cv2.DIST_L2, 5)
+    vals = dist[main > 0]
+    vals = vals[vals > 0]
+    if len(vals) == 0:
+        return 3.0
+    h, w = mask.shape[:2]
+    diag = math.hypot(h, w)
+    thickness = 2.0 * float(np.percentile(vals, 90))
+    return float(np.clip(thickness, 2.0, diag * 0.03))
 
 
-def polygon_area_pixels(points: Polygon) -> float:
-    return abs(cv2.contourArea(np.asarray(points, dtype=np.float32).reshape(-1, 1, 2)))
+# ============================================================================
+# 4. Замыкание проёмов (двери) — растровый staged closing
+# ============================================================================
 
+def _close_gaps(
+    mask,
+    thickness: float,
+    radii_factors: Sequence[float] = (1.0, 1.5, 2.0, 2.5, 3.0),
+    patch_area_factor: float = 150.0,
+):
+    """
+    Поэтапно "заклеивает" узкие проёмы в стенах (двери, входные
+    группы) морфологическим закрытием (dilate -> erode) с
+    прямоугольным структурным элементом.
 
-def _polygon_centroid(p: Polygon) -> Tuple[float, float]:
-    cx = sum(pt[0] for pt in p) / len(p)
-    cy = sum(pt[1] for pt in p) / len(p)
-    return cx, cy
+    Прямоугольное (не круглое) ядро специально выбрано, чтобы не
+    скруглять внутренние углы комнат — план в основном прямоугольный,
+    и MORPH_RECT сохраняет прямые углы намного лучше, чем MORPH_ELLIPSE
+    (эллиптическое ядро при закрытии на большом радиусе очень заметно
+    "скругляет" углы свободного пространства).
 
+    На каждом шаге радиус растёт (radii_factors по возрастанию).
+    Между текущей маской и маской после закрытия на данном радиусе
+    берётся разница (что нового "заклеилось") — эта разница режется
+    на связные заплатки, и заплатка принимается только если её
+    площадь не превышает patch_area_factor * thickness^2. Смысл: то,
+    что заклеилось узким радиусом — почти наверняка настоящий дверной
+    проём (небольшая заплатка); то, что требует широкого радиуса и
+    даёт большую площадь — скорее всего широкий открытый проход
+    (коридор), который заклеивать не нужно, комнаты там и не должны
+    разделяться.
 
-def _polygon_distance(p1: Polygon, p2: Polygon) -> float:
-    cx1, cy1 = _polygon_centroid(p1)
-    cx2, cy2 = _polygon_centroid(p2)
-    return math.hypot(cx1 - cx2, cy1 - cy2)
-
-
-def _bbox(p: Polygon) -> Tuple[float, float, float, float]:
-    xs = [pt[0] for pt in p]
-    ys = [pt[1] for pt in p]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
-def _is_background_margin(poly: Polygon, image_shape: Tuple[int, int]) -> bool:
-    """Отсекает полосы/рамку фона вокруг здания, которые не являются
-    настоящими комнатами (край листа, поля вокруг постройки)."""
-    h, w = image_shape
-    x1, y1, x2, y2 = _bbox(poly)
-    width, height = x2 - x1, y2 - y1
-    if width <= 0 or height <= 0:
-        return True
-    span_w, span_h = width / w, height / h
-    base = min(h, w)
-    if span_w > BACKGROUND_FULL_SPAN_RATIO and span_h > BACKGROUND_FULL_SPAN_RATIO:
-        return True
-    thin_h = height < base * BACKGROUND_BAND_THIN_FACTOR
-    thin_w = width < base * BACKGROUND_BAND_THIN_FACTOR
-    if span_w > BACKGROUND_BAND_SPAN_RATIO and thin_h:
-        return True
-    if span_h > BACKGROUND_BAND_SPAN_RATIO and thin_w:
-        return True
-
-    # Остаточная полоса, не дотягивающая до "почти всего листа", но очень
-    # вытянутая и почти лишённая выступов/ниш (типично для пустого поля
-    # рядом со зданием, а не для настоящей комнаты)
-    aspect = max(width, height) / max(1e-6, min(width, height))
-    if aspect > BACKGROUND_ASPECT_MAX:
-        area = polygon_area_pixels(poly)
-        compact = area / max(width * height, 1e-6)
-        if compact > BACKGROUND_COMPACTNESS_MIN:
-            return True
-    return False
-
-
-def _orthogonal_regularize(poly: Polygon, tol_deg: float = ORTHOGONAL_ANGLE_TOL_DEG) -> Polygon:
-    """Подравнивает почти горизонтальные/вертикальные рёбра под точные 0/90°,
-    убирая "лестничный" шум по контуру без изменения формы неортогональных
-    участков (например, скруглённых/диагональных углов, если такие есть)."""
-    if len(poly) < 3:
-        return poly
-    pts = [list(p) for p in poly]
-    n = len(pts)
-    for _pass in range(2):
-        for i in range(n):
-            prev = pts[i - 1]
-            cur = pts[i]
-            dx, dy = cur[0] - prev[0], cur[1] - prev[1]
-            length = math.hypot(dx, dy)
-            if length < 1e-6:
-                continue
-            angle = math.degrees(math.atan2(dy, dx)) % 180
-            a = angle if angle <= 90 else 180 - angle
-            if a <= tol_deg:
-                cur[1] = prev[1]
-            elif a >= 90 - tol_deg:
-                cur[0] = prev[0]
-    # Убираем вырожденные (совпадающие/почти совпадающие) последовательные точки
-    cleaned: List[Point] = []
-    for p in pts:
-        if not cleaned or math.hypot(p[0] - cleaned[-1][0], p[1] - cleaned[-1][1]) > 1e-3:
-            cleaned.append((float(p[0]), float(p[1])))
-    if len(cleaned) >= 2 and math.hypot(cleaned[0][0] - cleaned[-1][0], cleaned[0][1] - cleaned[-1][1]) < 1e-3:
-        cleaned.pop()
-    return cleaned if len(cleaned) >= 3 else poly
-
-
-def _bbox_iou(p1: Polygon, p2: Polygon) -> float:
-    x1, y1, x2, y2 = _bbox(p1)
-    x3, y3, x4, y4 = _bbox(p2)
-    ix1, iy1 = max(x1, x3), max(y1, y3)
-    ix2, iy2 = min(x2, x4), min(y2, y4)
-    if ix2 <= ix1 or iy2 <= iy1:
-        return 0.0
-    inter = (ix2 - ix1) * (iy2 - iy1)
-    a1 = max(1e-6, (x2 - x1) * (y2 - y1))
-    a2 = max(1e-6, (x4 - x3) * (y4 - y3))
-    return inter / min(a1, a2)
-
-
-def _polygons_touch_or_overlap(p1: Polygon, p2: Polygon, gap_px: float) -> bool:
-    """Точная проверка (по растру, в общих координатах bbox) на то, что два
-    полигона реально соприкасаются/пересекаются - в отличие от bbox-IoU это
-    не даёт ложных срабатываний для не-выпуклых форм (например, коридора
-    "крестом", чей bbox перекрывает bbox почти всех комнат)."""
-    x1, y1, x2, y2 = _bbox(p1)
-    x3, y3, x4, y4 = _bbox(p2)
-    ix1, iy1 = min(x1, x3) - gap_px, min(y1, y3) - gap_px
-    ix2, iy2 = max(x2, x4) + gap_px, max(y2, y4) + gap_px
-    ww, hh = ix2 - ix1, iy2 - iy1
-    if ww <= 0 or hh <= 0 or ww * hh > 4_000_000:
-        return False
-    scale_px = 1.0
-    canvas_w, canvas_h = int(ww) + 2, int(hh) + 2
-    m1 = np.zeros((canvas_h, canvas_w), np.uint8)
-    m2 = np.zeros((canvas_h, canvas_w), np.uint8)
-    pts1 = np.asarray([[int(p[0] - ix1), int(p[1] - iy1)] for p in p1], dtype=np.int32)
-    pts2 = np.asarray([[int(p[0] - ix1), int(p[1] - iy1)] for p in p2], dtype=np.int32)
-    cv2.fillPoly(m1, [pts1], 255)
-    cv2.fillPoly(m2, [pts2], 255)
-    if gap_px > 0:
-        k = _odd(gap_px)
-        m1 = cv2.dilate(m1, np.ones((k, k), np.uint8))
-    return bool(np.any(cv2.bitwise_and(m1, m2)))
-
-
-def _should_merge(p1: Polygon, p2: Polygon, max_dist: float) -> bool:
-    if _polygon_distance(p1, p2) >= max_dist * 3:
-        return False  # заведомо слишком далеко, не тратим время на растровую проверку
-    return _polygons_touch_or_overlap(p1, p2, gap_px=max(2.0, max_dist * 0.5))
-
-
-def _merge_close_polygons(polys: List[Polygon], max_dist: float) -> List[Polygon]:
-    """Объединяет полигоны, которые скорее всего являются осколками одной
-    комнаты (близкие центры или сильно пересекающиеся bbox). Полигоны разных
-    комнат (разделённые стеной, т.е. далеко и без пересечения) не трогает."""
-    if len(polys) <= 1:
-        return polys
-
-    areas = [polygon_area_pixels(p) for p in polys]
-    median_area = float(np.median(areas)) if areas else 0.0
-    small_thr = median_area * SMALL_FRAGMENT_AREA_FACTOR
-
-    n = len(polys)
-    parent = list(range(n))
-
-    def find(a):
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            dist_thr = max_dist
-            # Мелкие осколки склеиваем охотнее (типичный случай: узкая щель
-            # между "почти замкнутой" комнатой и оторванным клочком стены)
-            if areas[i] < small_thr or areas[j] < small_thr:
-                dist_thr = max_dist * 2.0
-            if _should_merge(polys[i], polys[j], dist_thr):
-                union(i, j)
-
-    groups: Dict[int, List[int]] = {}
-    for i in range(n):
-        groups.setdefault(find(i), []).append(i)
-
-    merged: List[Polygon] = []
-    for idxs in groups.values():
-        if len(idxs) == 1:
-            merged.append(polys[idxs[0]])
+    Именно поэтому радиусы идут от маленького к большому: узкие двери
+    закрываются первыми и перестают быть "частью" открытого
+    пространства коридора уже к моменту, когда радиус дорастает до
+    его ширины — иначе одна большая заплатка накрыла бы сразу и
+    дверь, и часть коридора, и была бы забракована целиком.
+    """
+    cur = mask.copy()
+    max_patch_area = patch_area_factor * thickness * thickness
+    for factor in radii_factors:
+        r = max(1, int(round(thickness * factor)))
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * r + 1, 2 * r + 1))
+        closed = cv2.morphologyEx(cur, cv2.MORPH_CLOSE, k)
+        diff = cv2.subtract(closed, cur)
+        if diff.max() == 0:
             continue
-        all_pts: List[Point] = []
-        for k in idxs:
-            all_pts.extend(polys[k])
-        hull = cv2.convexHull(np.asarray(all_pts, dtype=np.float32))
-        merged.append([(float(p[0][0]), float(p[0][1])) for p in hull])
-    return merged
-
-
-# ===== Удаление цветных маркеров (пути эвакуации, пиктограммы) =====
-def _remove_colored_markers(image: np.ndarray) -> np.ndarray:
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-    # Зелёный (маршрут эвакуации, значок "лестница/выход")
-    green_mask = cv2.inRange(hsv, np.array([35, 60, 40]), np.array([85, 255, 255]))
-    # Красный (огнетушитель, пожар) - две дуги оттенков
-    red_mask = cv2.bitwise_or(
-        cv2.inRange(hsv, np.array([0, 90, 60]), np.array([10, 255, 255])),
-        cv2.inRange(hsv, np.array([170, 90, 60]), np.array([180, 255, 255])),
-    )
-    # Насыщенный оранжевый (значок пожара/аптечки), НЕ трогаем бледную заливку комнат
-    orange_mask = cv2.inRange(hsv, np.array([10, 130, 120]), np.array([25, 255, 255]))
-    # Белые стрелки на зелёном фоне попадают под green после dilate - не нужен отдельный проход
-
-    markers_mask = cv2.bitwise_or(green_mask, red_mask)
-    markers_mask = cv2.bitwise_or(markers_mask, orange_mask)
-
-    kernel = np.ones((3, 3), np.uint8)
-    markers_mask = cv2.dilate(markers_mask, kernel, iterations=2)
-
-    image_no_markers = image.copy()
-    image_no_markers[markers_mask > 0] = [128, 128, 128]
-    _debug_save("0_markers_mask.jpg", markers_mask)
-    return image_no_markers
-
-
-# ===== Выделение "сырых" стен =====
-def _extract_walls(image: np.ndarray) -> np.ndarray:
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    h, w = gray.shape
-    scale = _img_scale(h, w)
-
-    blur_k = _odd(3 * scale)
-    blurred = cv2.GaussianBlur(gray, (blur_k, blur_k), 0)
-
-    block = _odd(31 * scale, 15)
-    adapt = cv2.adaptiveThreshold(
-        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block, 7
-    )
-
-    # Тёмные (низкая яркость, низкая насыщенность) пиксели - типичный цвет стен/контуров
-    # "Тёмное" (по каналу V) - работает независимо от оттенка: стены могут
-    # быть чёрными, серыми, коричневыми, тёмно-бордовыми и т.д.
-    val = hsv[:, :, 2]
-    dark_v = (val < 100).astype(np.uint8) * 255
-
-    edges = cv2.Canny(gray, 40, 130)
-    edges = cv2.dilate(edges, np.ones((2, 2), np.uint8), iterations=1)
-
-    wall = cv2.bitwise_or(adapt, dark_v)
-    wall = cv2.bitwise_or(wall, edges)
-
-    min_area = max(15, int(h * w * 0.000008))
-    wall = _remove_small_components(wall, min_area)
-    _debug_save("1_wall_raw.jpg", wall)
-    return wall
-
-
-# ===== Сборка стен в цельные толстые линии =====
-def _consolidate_walls(wall_mask: np.ndarray, image_shape: Tuple[int, int]) -> np.ndarray:
-    h, w = image_shape
-    scale = _img_scale(h, w)
-
-    # 1. Сильное морфологическое закрытие, чтобы слить параллельные/сдвоенные
-    #    контуры одной и той же стены в одну толстую линию (убирает "осколки")
-    close_k = _odd(9 * scale * WALL_CLOSE_KERNEL_FACTOR)
-    closed = cv2.morphologyEx(
-        wall_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_k, close_k)),
-        iterations=1,
-    )
-
-    # 2. Усиливаем протяжённые горизонтальные/вертикальные структуры (сами стены),
-    #    что помогает дотянуть слегка прерванные линии без раздувания мелких пятен
-    line_len = max(9, int(25 * scale))
-    hk = cv2.getStructuringElement(cv2.MORPH_RECT, (line_len, 1))
-    vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, line_len))
-    lines_h = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE, hk)
-    lines_v = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE, vk)
-    lines = cv2.bitwise_or(lines_h, lines_v)
-
-    combined = cv2.bitwise_or(closed, lines)
-
-    # 3. Небольшая дилатация, чтобы гарантированно замкнуть контур комнаты
-    dil_k = _odd(3 * scale)
-    combined = cv2.dilate(combined, np.ones((dil_k, dil_k), np.uint8), iterations=1)
-
-    # 4. Убираем мусор (текст, иконки), не связанный с основной сетью стен
-    combined = _keep_dominant_components(combined, WALL_MIN_COMPONENT_RATIO)
-
-    min_area = max(80, int(h * w * 0.00003))
-    combined = _remove_small_components(combined, min_area)
-    _debug_save("2_wall_consolidated.jpg", combined)
-    return combined
-
-
-# ===== Закрытие дверных проёмов (без заливки крупных проходов) =====
-def _close_door_gaps(wall_mask: np.ndarray, image_shape: Tuple[int, int]) -> np.ndarray:
-    h, w = image_shape
-    s = _img_scale(h, w)
-    base = min(h, w)
-
-    max_gap = max(10, int(base * DOOR_GAP_MAX_FACTOR))
-    result = wall_mask
-
-    # Два прохода нарастающим ядром: сперва закрываем совсем маленькие
-    # разрывы (щели между сегментами одной стены), затем - типичные дверные
-    # проёмы. Порог max_gap не даёт "залить" большие проходы/коридоры.
-    passes = [
-        max(5, int(base * DOOR_GAP_MIN_FACTOR)),
-        max(9, int(base * DOOR_GAP_MIN_FACTOR * 2.2)),
-        max_gap,
-    ]
-    for kernel_size in passes:
-        kernel_size = _odd(kernel_size, 5)
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        closed = cv2.morphologyEx(result, cv2.MORPH_CLOSE, kernel, iterations=1)
-        added = cv2.subtract(closed, result)
-        if np.count_nonzero(added) == 0:
-            continue
-        n, labels, stats, _ = cv2.connectedComponentsWithStats(added, 8)
-        accepted = np.zeros_like(added)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(diff, connectivity=8)
+        accept = np.zeros_like(diff)
         for i in range(1, n):
-            x, y, ww, hh, area = stats[i]
-            long_side = max(ww, hh)
-            short_side = max(1, min(ww, hh))
-            aspect = long_side / short_side
-            if aspect > DOOR_GAP_ASPECT_MAX:
-                continue
-            if long_side > max_gap:
-                continue
-            if area > max_gap * max_gap * 1.5:
-                continue
-            accepted[labels == i] = 255
-        result = cv2.bitwise_or(result, accepted)
-
-    _debug_save("3_doors_closed.jpg", result)
-    return result
+            if stats[i, cv2.CC_STAT_AREA] <= max_patch_area:
+                accept[labels == i] = 255
+        cur = cv2.bitwise_or(cur, accept)
+    return cur
 
 
-# ===== Детектирование лестниц (группы параллельных коротких линий) =====
-def _detect_stairs(image: np.ndarray) -> List[Polygon]:
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    h, w = gray.shape
-    scale = _img_scale(h, w)
-    base = min(h, w)
+# ============================================================================
+# 5. Извлечение комнат (связные области свободного пространства)
+# ============================================================================
 
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray_eq = clahe.apply(gray)
-    _, dark = cv2.threshold(gray_eq, 110, 255, cv2.THRESH_BINARY_INV)
-    dark = cv2.morphologyEx(dark, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
-    edges = cv2.Canny(dark, 50, 150)
+def _extract_room_masks(
+    closed_wall_mask,
+    min_area: float,
+    min_width: float,
+) -> List[Tuple[int, np.ndarray]]:
+    """
+    Свободное пространство (всё, что не стена) режется на связные
+    компоненты. Компонента, которая касается рамки кадра, считается
+    "улицей"/фоном снаружи здания (общий контур этажа как раз и
+    определяется тем, что он отделяет это внешнее пространство от
+    внутреннего) и в комнаты не идёт. Остальные компоненты — кандидаты
+    в комнаты, дополнительно отсеиваются слишком маленькие/слишком
+    узкие (щели, недозаклеенные огрехи маски).
 
-    min_len = max(10, int(base * STAIR_LINE_LEN_FACTOR))
-    max_gap = max(3, int(6 * scale))
-    lines = cv2.HoughLinesP(
-        edges, 1, np.pi / 180,
-        threshold=max(8, int(base * STAIR_LINE_LEN_FACTOR)),
-        minLineLength=min_len, maxLineGap=max_gap,
+    Возвращает список (label, bool-маска) для каждой найденной комнаты.
+    """
+    free = cv2.bitwise_not(closed_wall_mask)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(free, connectivity=8)
+    border_labels = (
+        set(labels[0, :].tolist())
+        | set(labels[-1, :].tolist())
+        | set(labels[:, 0].tolist())
+        | set(labels[:, -1].tolist())
     )
-    if lines is None:
-        return []
+    border_labels.discard(0)
 
-    horizontal, vertical = [], []
-    for line in lines[:, 0]:
-        x1, y1, x2, y2 = line
-        dx, dy = x2 - x1, y2 - y1
-        length = math.hypot(dx, dy)
-        if length < min_len:
-            continue
-        angle = abs(math.degrees(math.atan2(dy, dx))) % 180
-        if angle <= 15 or angle >= 165:
-            horizontal.append((x1, y1, x2, y2, length))
-        elif 75 <= angle <= 105:
-            vertical.append((x1, y1, x2, y2, length))
-
-    candidates: List[Polygon] = []
-    cluster_gap = max(5, int(base * STAIR_CLUSTER_GAP_FACTOR))
-
-    def cluster_by(lines_list, key_fn, gap):
-        clusters = []
-        for line in sorted(lines_list, key=key_fn):
-            k = key_fn(line)
-            placed = False
-            for cl in clusters:
-                if abs(k - cl["mean"]) <= gap:
-                    cl["lines"].append(line)
-                    cl["mean"] = float(np.mean([key_fn(l) for l in cl["lines"]]))
-                    placed = True
-                    break
-            if not placed:
-                clusters.append({"mean": k, "lines": [line]})
-        return clusters
-
-    # Горизонтальные "ступени"
-    if len(horizontal) >= STAIR_MIN_PARALLEL_LINES:
-        clusters = cluster_by(horizontal, lambda l: (l[1] + l[3]) / 2, cluster_gap)
-        for cl in clusters:
-            if len(cl["lines"]) >= STAIR_MIN_PARALLEL_LINES:
-                ys = sorted([(l[1] + l[3]) / 2 for l in cl["lines"]])
-                diffs = np.diff(ys)
-                if len(diffs) >= 2 and np.std(diffs) < np.mean(diffs) * 0.35 + 1e-6:
-                    xs, ys_all = [], []
-                    for l in cl["lines"]:
-                        xs.extend([l[0], l[2]])
-                        ys_all.extend([l[1], l[3]])
-                    pad = max(3, int(5 * scale))
-                    candidates.append([
-                        (min(xs) - pad, min(ys_all) - pad),
-                        (max(xs) + pad, min(ys_all) - pad),
-                        (max(xs) + pad, max(ys_all) + pad),
-                        (min(xs) - pad, max(ys_all) + pad),
-                    ])
-
-    # Вертикальные "ступени"
-    if len(vertical) >= STAIR_MIN_PARALLEL_LINES:
-        clusters = cluster_by(vertical, lambda l: (l[0] + l[2]) / 2, cluster_gap)
-        for cl in clusters:
-            if len(cl["lines"]) >= STAIR_MIN_PARALLEL_LINES:
-                xs = sorted([(l[0] + l[2]) / 2 for l in cl["lines"]])
-                diffs = np.diff(xs)
-                if len(diffs) >= 2 and np.std(diffs) < np.mean(diffs) * 0.35 + 1e-6:
-                    ys, xs_all = [], []
-                    for l in cl["lines"]:
-                        ys.extend([l[1], l[3]])
-                        xs_all.extend([l[0], l[2]])
-                    pad = max(3, int(5 * scale))
-                    candidates.append([
-                        (min(xs_all) - pad, min(ys) - pad),
-                        (max(xs_all) + pad, min(ys) - pad),
-                        (max(xs_all) + pad, max(ys) + pad),
-                        (min(xs_all) - pad, max(ys) + pad),
-                    ])
-
-    unique: List[Polygon] = []
-    for cand in candidates:
-        if not any(_polygons_overlap(cand, u, threshold=0.5) for u in unique):
-            unique.append(cand)
-    return unique
-
-
-def _polygons_overlap(p1: Polygon, p2: Polygon, threshold: float = 0.5) -> bool:
-    x1, y1, x2, y2 = _bbox(p1)
-    x3, y3, x4, y4 = _bbox(p2)
-    ix1, iy1 = max(x1, x3), max(y1, y3)
-    ix2, iy2 = min(x2, x4), min(y2, y4)
-    if ix2 <= ix1 or iy2 <= iy1:
-        return False
-    inter_area = (ix2 - ix1) * (iy2 - iy1)
-    a1 = (x2 - x1) * (y2 - y1)
-    a2 = (x4 - x3) * (y4 - y3)
-    if a1 <= 0 or a2 <= 0:
-        return False
-    return inter_area / min(a1, a2) > threshold
-
-
-# ===== Извлечение комнат из финальной маски стен =====
-def _extract_rooms(wall_mask: np.ndarray, min_area_px: int) -> List[Polygon]:
-    h, w = wall_mask.shape
-    pad = max(8, int(min(h, w) * 0.01))
-    canvas = np.zeros((h + 2 * pad, w + 2 * pad), np.uint8)
-    canvas[pad:pad + h, pad:pad + w] = wall_mask
-    cv2.rectangle(canvas, (0, 0), (canvas.shape[1] - 1, canvas.shape[0] - 1), 255, pad)
-
-    free = cv2.bitwise_not(canvas)
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(free, 8)
-
-    rooms: List[Polygon] = []
+    rooms = []
+    half_w = max(1, int(round(min_width / 2.0)))
+    erosion_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * half_w + 1, 2 * half_w + 1))
     for i in range(1, n):
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area < min_area_px:
+        if i in border_labels:
             continue
-        x, y, ww, hh = stats[i, :4]
-        # Отбрасываем компонент, если он касается внешней рамки (значит, "утёк" наружу)
-        if x <= 0 or y <= 0 or x + ww >= canvas.shape[1] - 1 or y + hh >= canvas.shape[0] - 1:
+        if stats[i, cv2.CC_STAT_AREA] < min_area:
             continue
-
-        component = (labels == i).astype(np.uint8) * 255
-        contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            continue
-        cnt = max(contours, key=cv2.contourArea)
-        if cv2.contourArea(cnt) < min_area_px:
-            continue
-
-        peri = cv2.arcLength(cnt, True)
-        eps = max(1.5, peri * POLY_SIMPLIFY_EPS_FACTOR)
-        approx = cv2.approxPolyDP(cnt, eps, True)
-        pts = [(float(p[0][0] - pad), float(p[0][1] - pad)) for p in approx]
-        if ORTHOGONAL_SNAP:
-            pts = _orthogonal_regularize(pts)
-        if len(pts) >= 3:
-            rooms.append(pts)
+        room_mask = np.uint8(labels == i) * 255
+        if min_width > 0:
+            eroded = cv2.erode(room_mask, erosion_kernel)
+            if not eroded.any():
+                continue  # слишком узкая полоска — не настоящая комната
+        rooms.append((i, room_mask))
     return rooms
 
 
-# ===== Классификация типа помещения =====
-def _classify_room(poly: Polygon, all_polys: List[Polygon], stair_polys: List[Polygon]) -> Tuple[str, float]:
-    area = polygon_area_pixels(poly)
-    xs = [p[0] for p in poly]
-    ys = [p[1] for p in poly]
-    width = max(xs) - min(xs)
-    height = max(ys) - min(ys)
-    if width <= 0 or height <= 0:
-        return "", 0.0
-    aspect = max(width, height) / max(1e-6, min(width, height))
-    rect_area = width * height
-    compact = area / max(rect_area, 1e-6)
+# ============================================================================
+# 6. Контур комнаты -> чистый прямоугольный полигон
+# ============================================================================
 
-    cx, cy = _polygon_centroid(poly)
-    for stair in stair_polys:
-        cnt_stair = np.asarray(stair, dtype=np.float32).reshape(-1, 1, 2)
-        if cv2.pointPolygonTest(cnt_stair, (cx, cy), False) >= 0:
-            return "лестница", 1.0
-
-    if aspect >= 3.0 or (aspect >= 2.2 and compact < 0.72):
-        return "коридор", 0.78
-    if compact < 0.55 and area > np.median([polygon_area_pixels(p) for p in all_polys]):
-        return "коридор", 0.62
-    median = np.median([polygon_area_pixels(p) for p in all_polys]) if all_polys else area
-    if area < median * 0.25:
-        return "санузел", 0.55
-    if area > median * 2.5:
-        return "зал", 0.60
-    return "кабинет", 0.45
+def _contour_to_points(cnt, simplify_frac: float = 0.006) -> List[Point]:
+    """Пиксельный контур -> упрощённый список вершин (approxPolyDP)."""
+    peri = cv2.arcLength(cnt, True)
+    eps = max(1.5, simplify_frac * peri)
+    approx = cv2.approxPolyDP(cnt, eps, True)
+    return [(float(p[0][0]), float(p[0][1])) for p in approx]
 
 
-# ===== ОСНОВНЫЕ ПУБЛИЧНЫЕ ФУНКЦИИ =====
-def load_image(filepath: str) -> np.ndarray:
-    with open(filepath, "rb") as f:
-        data = np.frombuffer(f.read(), dtype=np.uint8)
-    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError(f"Не удалось загрузить изображение {filepath}")
-    return image
+def _orthogonalize(points: List[Point], angle_tol_deg: float = 8.0) -> List[Point]:
+    """
+    Рёбра, близкие по направлению к горизонтали/вертикали (в пределах
+    angle_tol_deg), принудительно выравниваются в горизонталь/
+    вертикаль — общая (усреднённая) координата навязывается обеим
+    вершинам ребра. Это убирает "рыхлость" в 1-2 пикселя, оставшуюся
+    после растеризации/упрощения, и даёт ровные прямые углы, как в
+    эталонной разметке.
+
+    Диагональные стены (в примерах встречаются, например, у лестниц)
+    в допуск не попадают и остаются как есть.
+    """
+    n = len(points)
+    if n < 3:
+        return points
+    out = list(points)
+    for i in range(n):
+        x1, y1 = out[i]
+        x2, y2 = out[(i + 1) % n]
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        angle = math.degrees(math.atan2(dy, dx)) % 180
+        if angle < angle_tol_deg or angle > 180 - angle_tol_deg:
+            ny = (y1 + y2) / 2.0
+            out[i] = (x1, ny)
+            out[(i + 1) % n] = (x2, ny)
+        elif abs(angle - 90) < angle_tol_deg:
+            nx = (x1 + x2) / 2.0
+            out[i] = (nx, y1)
+            out[(i + 1) % n] = (nx, y2)
+    return out
 
 
-def calibrate_scale(calib_line):
-    (x1, y1), (x2, y2), length_m = calib_line
-    pixel_len = math.hypot(x2 - x1, y2 - y1)
-    return 0.0 if pixel_len == 0 else float(length_m) / pixel_len
+def _merge_close_points(points: List[Point], tol: float) -> List[Point]:
+    """
+    Склеивает соседние вершины, расстояние между которыми меньше tol
+    (финальная "склейка близко находящихся точек", о которой просили
+    в задаче) — убирает дребезг в 1-3 пикселя после ортогонализации.
+    """
+    if not points:
+        return points
+    out: List[Point] = []
+    for p in points:
+        if out and math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) < tol:
+            continue
+        out.append(p)
+    if len(out) > 1 and math.hypot(out[0][0] - out[-1][0], out[0][1] - out[-1][1]) < tol:
+        out.pop()
+    return out
 
 
-def detect_floor_plan(image: np.ndarray, min_area_px: Optional[int] = None) -> Dict[str, Any]:
-    if image is None or image.ndim != 3:
-        raise ValueError("Ожидалось цветное изображение")
-
-    h, w = image.shape[:2]
-    if DEBUG:
-        os.makedirs(DEBUG_DIR, exist_ok=True)
-        cv2.imwrite(os.path.join(DEBUG_DIR, "0_original.jpg"), image)
-
-    # 1. Удаляем цветные маркеры (пути эвакуации, пиктограммы)
-    image_clean = _remove_colored_markers(image)
-
-    # 2. Сырая маска стен
-    wall_raw = _extract_walls(image_clean)
-
-    # 3. Сборка в цельные толстые линии + удаление мусора (иконки/текст)
-    wall_consolidated = _consolidate_walls(wall_raw, (h, w))
-
-    # 4. Закрытие дверных проёмов (без заливки крупных проходов)
-    wall_final = _close_door_gaps(wall_consolidated, (h, w))
-
-    min_area_final = max(60, int(h * w * 0.00002))
-    wall_final = _remove_small_components(wall_final, min_area_final)
-    _debug_save("4_wall_final.jpg", wall_final)
-
-    # 5. Лестницы
-    stair_polys = _detect_stairs(image_clean)
-    if DEBUG:
-        vis_stairs = image.copy()
-        for poly in stair_polys:
-            pts = np.asarray(poly, dtype=np.int32).reshape((-1, 1, 2))
-            cv2.polylines(vis_stairs, [pts], True, (255, 0, 0), 2)
-        cv2.imwrite(os.path.join(DEBUG_DIR, "5_stairs.jpg"), vis_stairs)
-
-    # 6. Комнаты (заливка свободного пространства между стенами)
-    if min_area_px is None:
-        min_area_px = max(500, int(h * w * 0.0003))
-    room_polys = _extract_rooms(wall_final, min_area_px)
-    room_polys = [p for p in room_polys if not _is_background_margin(p, (h, w))]
-    if DEBUG:
-        vis_rooms_raw = image.copy()
-        for poly in room_polys:
-            pts = np.asarray(poly, dtype=np.int32).reshape((-1, 1, 2))
-            cv2.polylines(vis_rooms_raw, [pts], True, (0, 255, 255), 2)
-        cv2.imwrite(os.path.join(DEBUG_DIR, "6_rooms_raw.jpg"), vis_rooms_raw)
-
-    # 7. Склейка соседних осколков одной комнаты (без слияния разных комнат)
-    if MERGE_CLOSE_ROOMS:
-        merge_dist = max(10, int(min(h, w) * MERGE_DISTANCE_FACTOR))
-        room_polys = _merge_close_polygons(room_polys, merge_dist)
-    if DEBUG:
-        vis_rooms_merged = image.copy()
-        for poly in room_polys:
-            pts = np.asarray(poly, dtype=np.int32).reshape((-1, 1, 2))
-            cv2.polylines(vis_rooms_merged, [pts], True, (0, 0, 255), 2)
-        cv2.imwrite(os.path.join(DEBUG_DIR, "7_rooms_merged.jpg"), vis_rooms_merged)
-
-    # 8. Классификация и присвоение ID
-    typed_rooms = []
-    for idx, poly in enumerate(room_polys, start=1):
-        rt, conf = _classify_room(poly, room_polys, stair_polys)
-        typed_rooms.append({
-            "id": idx,
-            "points": poly,
-            "room_type": rt,
-            "confidence": conf,
-            "area_px": polygon_area_pixels(poly),
-        })
-
-    return {
-        "rooms": typed_rooms,
-        "walls_mask": wall_final,
-        "stair_regions": stair_polys,
-        "diagnostics": {
-            "image_size": (w, h),
-            "wall_pixels": int(np.count_nonzero(wall_final)),
-            "room_count": len(typed_rooms),
-            "stair_candidates": len(stair_polys),
-        },
-    }
+def _clean_room_polygon(room_mask, thickness: float) -> Optional[List[Point]]:
+    contours, _ = cv2.findContours(room_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    cnt = max(contours, key=cv2.contourArea)
+    pts = _contour_to_points(cnt)
+    if len(pts) < 3:
+        return None
+    # Два прохода: после выравнивания рёбер иногда появляются новые
+    # пары близких вершин, которые стоит склеить/выровнять ещё раз.
+    for _ in range(2):
+        pts = _orthogonalize(pts)
+        pts = _merge_close_points(pts, tol=max(2.0, thickness * 0.5))
+    if len(pts) < 3:
+        return None
+    return [(round(x, 1), round(y, 1)) for x, y in pts]
 
 
-# ===== Совместимые обёртки (сигнатуры сохранены) =====
-def detect_walls(image: np.ndarray) -> List[Polygon]:
-    return [x["points"] for x in detect_floor_plan(image)["rooms"]]
+# ============================================================================
+# 7. Главная функция
+# ============================================================================
+
+def detect_floor_plan(
+    img,
+    v_thresh: int = 110,
+    chroma_thresh: int = 25,
+    door_gap_factor: float = 5.0,
+    min_room_side: float = 6.0,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """
+    Основная функция: растровый план пожарной эвакуации -> разметка
+    комнат этажа.
+
+    Параметры:
+        img              — изображение (numpy BGR, как из load_image).
+        v_thresh,
+        chroma_thresh    — пороги отделения "стена" (тёмное+серое) от
+                            фона и цветных значков/стрелок, см. _wall_mask.
+        door_gap_factor  — во сколько раз типичный дверной проём шире
+                            толщины стены; определяет, насколько
+                            широкие проёмы будут "заклеены" при
+                            разделении комнат (см. _close_gaps).
+        min_room_side     — минимальная "толщина" области (в толщинах
+                            стены), чтобы считаться комнатой, а не
+                            щелью/огрехом маски.
+        debug            — если True, в результат добавляются
+                            промежуточные маски (ключ "debug") —
+                            удобно для подбора порогов на новых планах.
+
+    Возвращает:
+        {"rooms": [{"points": [(x, y), ...], "room_type": ""}, ...]}
+    """
+    if img is None:
+        raise ValueError("detect_floor_plan: пустое изображение")
+
+    h, w = img.shape[:2]
+
+    # 1) Только стены: цветовая маска + чистка значков/стрелок/текста.
+    raw_mask = _wall_mask(img, v_thresh=v_thresh, chroma_thresh=chroma_thresh)
+    wall_mask = _remove_small_blobs(raw_mask)
+
+    # 2) Толщина стен -> производные от неё параметры.
+    thickness = _estimate_thickness(wall_mask)
+    diag = math.hypot(h, w)
+    door_gap = float(np.clip(thickness * door_gap_factor, thickness * 3, diag * 0.08))
+
+    # 3) Общий контур этажа + разметка комнат внутри: замыкаем дверные
+    #    проёмы, чтобы соседние комнаты отделились друг от друга.
+    radii_factors = [f * (door_gap / (thickness * door_gap_factor)) for f in (1.0, 1.5, 2.0, 2.5, 3.0)]
+    closed_mask = _close_gaps(wall_mask, thickness, radii_factors=radii_factors)
+
+    # 4) Комнаты = связные области свободного пространства, не
+    #    касающиеся рамки кадра (рамка кадра ~ "улица"/фон снаружи
+    #    здания, т.е. вне общего контура этажа).
+    min_area = (thickness * 6.0) ** 2
+    min_width = thickness * min_room_side / 3.0
+    room_masks = _extract_room_masks(closed_mask, min_area=min_area, min_width=min_width)
+
+    # 5) Склейка близких точек и стен: у каждой комнаты чистим контур.
+    rooms: List[Dict[str, Any]] = []
+    for _label, room_mask in room_masks:
+        pts = _clean_room_polygon(room_mask, thickness)
+        if not pts or len(pts) < 3:
+            continue
+        rooms.append({"points": pts, "room_type": ""})
+
+    result: Dict[str, Any] = {"rooms": rooms}
+    if debug:
+        result["debug"] = {
+            "wall_mask": wall_mask,
+            "closed_mask": closed_mask,
+            "thickness": thickness,
+            "door_gap": door_gap,
+        }
+    return result
 
 
-def detect_room_candidates(image: np.ndarray) -> List[Dict[str, Any]]:
-    return detect_floor_plan(image)["rooms"]
+# ============================================================================
+# 8. Автономный запуск для отладки / подбора параметров
+# ============================================================================
+
+def _debug_visualize(img, result: Dict[str, Any]):
+    """Рисует найденные комнаты поверх исходного изображения (для CLI)."""
+    overlay = np.zeros_like(img)
+    rng = np.random.RandomState(0)
+    for room in result["rooms"]:
+        pts = np.array(room["points"], dtype=np.int32)
+        color = tuple(int(c) for c in rng.randint(60, 255, 3))
+        cv2.fillPoly(overlay, [pts], color)
+        for p in room["points"]:
+            cv2.circle(overlay, (int(p[0]), int(p[1])), 3, (0, 0, 255), -1)
+    return cv2.addWeighted(img, 0.5, overlay, 0.6, 0)
 
 
-def draw_walls(image: np.ndarray, contours: List[Polygon], color=(0, 0, 255), thickness=2) -> np.ndarray:
-    vis = image.copy()
-    for cnt in contours:
-        pts = np.asarray(cnt, dtype=np.int32).reshape((-1, 1, 2))
-        cv2.polylines(vis, [pts], True, color, thickness)
-    return vis
-
-
-# ===== Тест =====
 if __name__ == "__main__":
-    img = cv2.imread("plan.jpg")
-    if img is not None:
-        result = detect_floor_plan(img)
-        rooms = result["rooms"]
-        print(f"Найдено комнат: {len(rooms)}")
-        vis = draw_walls(img, [r["points"] for r in rooms])
-        cv2.imwrite("result.jpg", vis)
-    else:
-        print("Файл plan.jpg не найден")
+    import sys
+
+    if len(sys.argv) < 2:
+        print("Использование: python image_processor.py <путь_к_плану.jpg> [путь_к_результату.png]")
+        raise SystemExit(1)
+
+    in_path = sys.argv[1]
+    out_path = sys.argv[2] if len(sys.argv) > 2 else "debug_rooms.png"
+
+    image = load_image(in_path)
+    res = detect_floor_plan(image, debug=True)
+    print(f"Найдено комнат: {len(res['rooms'])}")
+    print(f"Оценённая толщина стены: {res['debug']['thickness']:.1f}px, "
+          f"ширина двери для закрытия: {res['debug']['door_gap']:.1f}px")
+    for i, room in enumerate(res["rooms"], 1):
+        print(f"  Комната {i}: {len(room['points'])} вершин")
+
+    vis = _debug_visualize(image, res)
+    cv2.imwrite(out_path, vis)
+    print(f"Визуализация сохранена: {out_path}")

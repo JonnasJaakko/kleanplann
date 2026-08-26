@@ -1,33 +1,39 @@
-# scheduler.py
-"""
-Практический планировщик уборки.
+"""Адаптивный однодневный планировщик KleanPlann.
 
 Главные принципы:
-1. Нормативное время и кратность берутся только из sanitarnorm.
-2. Каждая требуемая уборка создаётся как отдельная задача.
-3. Обед является жёстким недоступным интервалом.
-4. Внутри смены задачи стараются распределяться равномерно между всеми
-   указанными сотрудниками, но без искусственного создания работы.
-5. Если задача физически не помещается в обычную смену, она переносится
-   после окончания смены и получает is_overtime=True. Такая задача
-   считается допустимой переработкой и в отчёте должна быть подсвечена
-   светло-красным.
-6. Зоны ответственности являются предпочтительным сотрудником, но
-   scheduler может передать отдельную уборку другому сотруднику, если
-   это необходимо для выполнимости/баланса.
+- планирование всегда строится на один рабочий день;
+- частоты и длительности берутся из sanitarnorm;
+- погодная поправка не размножает уборки всех помещений подряд;
+- зоны ответственности являются жёстким предпочтением/назначением;
+- внутри назначенной зоны задачи упорядочиваются по готовности, приоритету,
+  близости помещений и трудоёмкости;
+- «идеальное время» является временем разрешения, а не точкой, в которой
+  сотрудника заставляют простаивать;
+- переходы учитываются до начала следующей задачи;
+- алгоритм имеет конечное число операций и не содержит циклического поиска слота.
 """
-from datetime import datetime, timedelta
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 import math
 
 import sanitarnorm
 from project import CleaningTask
 
+COOLDOWN_BY_TYPE = {"санузел": 0, "кухня": 0, "коридор": 0, "default": 0}
+TRANSIT_SAME_FLOOR = 1
+TRANSIT_TO_OTHER_FLOOR = 5
+TRANSIT_TOILET = 3
+LOOKAHEAD_MINUTES = 25
+DISTANCE_WEIGHT = 0.06
+GAP_WEIGHT = 2.5
+LOAD_WEIGHT = 0.015
+PRIORITY_BONUS = 50.0
 
-# Backward-compatible lightweight job used by older tests/integrations.
+
 class CleaningJob:
-    def __init__(self, room_id, floor_index, duration, occurrence,
-                 frequency, priority=False, employee=0, is_overtime=False):
+    def __init__(self, room_id, floor_index, duration, occurrence, frequency, priority=False, employee=0, is_overtime=False):
         self.room_id = room_id
         self.floor_index = floor_index
         self.duration = duration
@@ -39,41 +45,26 @@ class CleaningJob:
 
 
 def _compute_ideal_start(job, shift_start, shift_end):
-    """Совместимый helper: равномерная точка внутри календарной смены."""
-    span = shift_end - shift_start
-    if getattr(job, "frequency", 1) <= 1:
-        return shift_start
-    return shift_start + span * getattr(job, "occurrence", 0) // getattr(job, "frequency", 1)
+    span = max(0, int(shift_end) - int(shift_start))
+    freq = max(1, int(getattr(job, "frequency", 1)))
+    occurrence = max(0, int(getattr(job, "occurrence", 0)))
+    # Legacy helper: returns a soft target, never a hard scheduling point.
+    return int(shift_start + span * occurrence / freq)
 
 
-# Минимальный технологический интервал между двумя уборками одного помещения.
-# Это не норматив кратности: кратность задаётся sanitarnorm.
-COOLDOWN_BY_TYPE = {
-    "санузел": 180,
-    "кухня": 180,
-    "коридор": 120,
-    "default": 90,
-}
-
-TRANSIT_SAME_FLOOR = 1
-TRANSIT_TO_OTHER_FLOOR = 5
-TRANSIT_TOILET = 3
+def _get_effective_freq(room_type: str, weather_factor: float = 1.0) -> int:
+    return sanitarnorm.get_effective_frequency(room_type, weather_factor)
 
 
 def _type_key(room_type: str) -> str:
-    s = (room_type or "").lower()
-    for key in ("санузел", "кухня", "коридор"):
-        if key in s:
-            return key
-    return "default"
+    return sanitarnorm.normalize_room_type(room_type)
 
 
 def _get_cooldown(room_type: str) -> int:
-    return COOLDOWN_BY_TYPE[_type_key(room_type)]
+    return COOLDOWN_BY_TYPE.get(_type_key(room_type), 0)
 
 
-def _get_transit_minutes(prev_room_type: str, prev_floor: int,
-                         next_floor: int) -> int:
+def _get_transit_minutes(prev_room_type: str, prev_floor: int, next_floor: int) -> int:
     if prev_room_type and _type_key(prev_room_type) == "санузел":
         return TRANSIT_TOILET
     if prev_floor != next_floor:
@@ -82,31 +73,38 @@ def _get_transit_minutes(prev_room_type: str, prev_floor: int,
 
 
 def _to_minutes(value: str) -> int:
-    h, m = map(int, value.split(":"))
+    h, m = map(int, str(value).split(":"))
     return h * 60 + m
 
 
-def _time_to_datetime(base_date, minute_from_midnight: int) -> datetime:
-    return datetime.combine(
-        base_date,
-        datetime.min.time()
-    ) + timedelta(minutes=minute_from_midnight)
+def _time_to_datetime(base_date: date, minute_from_midnight: int) -> datetime:
+    return datetime.combine(base_date, datetime.min.time()) + timedelta(minutes=minute_from_midnight)
+
+
+def _normalize_date(value, fallback=None):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+    return fallback or date.today()
 
 
 def _regular_windows(project) -> Tuple[int, int, List[Tuple[int, int]]]:
-    """Возвращает начало/конец смены и доступные интервалы без обеда."""
-    if not project.shifts:
+    if not getattr(project, "shifts", None):
         start, end = 9 * 60, 19 * 60
     else:
         shift = project.shifts[0]
-        start = _to_minutes(shift.start_time)
-        end = _to_minutes(shift.end_time)
-
+        start, end = _to_minutes(shift.start_time), _to_minutes(shift.end_time)
     if end <= start:
         raise ValueError("Конец смены должен быть позже начала смены")
 
     windows = [(start, end)]
-
     for b_start, b_end in getattr(project, "breaks", []) or []:
         try:
             bs, be = _to_minutes(b_start), _to_minutes(b_end)
@@ -114,537 +112,444 @@ def _regular_windows(project) -> Tuple[int, int, List[Tuple[int, int]]]:
             continue
         if be <= bs:
             continue
-
-        new_windows = []
+        new = []
         for ws, we in windows:
             if be <= ws or bs >= we:
-                new_windows.append((ws, we))
+                new.append((ws, we))
                 continue
             if ws < bs:
-                new_windows.append((ws, min(bs, we)))
+                new.append((ws, min(bs, we)))
             if be < we:
-                new_windows.append((max(be, ws), we))
-        windows = [(a, b) for a, b in new_windows if b > a]
-
+                new.append((max(be, ws), we))
+        windows = [(a, b) for a, b in new if b > a]
     return start, end, windows
 
 
-def _build_targets(frequency: int, windows: List[Tuple[int, int]]) -> List[int]:
-    """
-    Равномерно раскладывает повторные уборки по рабочему времени,
-    а не по календарному времени смены.
-
-    Например 09:00–19:00 + обед 12:00–13:00:
-      freq=2 -> примерно 09:00 и 16:00
-      freq=3 -> примерно 09:00, 13:30, 18:00
-    """
-    if frequency <= 1:
-        return [windows[0][0]]
-
-    total = sum(b - a for a, b in windows)
-    if total <= 0:
-        return [windows[0][0]] * frequency
-
-    # Равномерные точки по рабочей шкале.
-    points = []
-    for i in range(frequency):
-        offset = round(total * i / frequency)
-        remaining = offset
-        chosen = windows[-1][0]
-        for ws, we in windows:
-            length = we - ws
-            if remaining <= length:
-                chosen = ws + remaining
-                break
-            remaining -= length
-        points.append(int(chosen))
-    return points
-
-
-def _zone_map(project) -> Dict[Tuple[int, int], int]:
-    """room key -> preferred employee."""
-    mapping = {}
-    for zone in getattr(project, "zones", []) or []:
-        fi = getattr(zone, "floor_index", 0)
-        emp = getattr(zone, "employee_index", 0)
-        for rid in getattr(zone, "room_ids", []) or []:
-            mapping[(fi, rid)] = emp
-    return mapping
-
-
-def _room_map(project):
-    return {
-        (fi, room.id): room
-        for fi, floor in enumerate(project.floors)
-        for room in floor.rooms
-    }
-
-
-def _safe_employee_count(project, employees: Optional[int]) -> int:
-    requested = employees if employees is not None else project.employees_count
-    requested = max(1, int(requested))
-
-    max_zone_emp = -1
-    for z in getattr(project, "zones", []) or []:
-        max_zone_emp = max(max_zone_emp, getattr(z, "employee_index", 0))
-
-    return max(requested, max_zone_emp + 1)
-
-
-def _overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
-    return a_start < b_end and a_end > b_start
-
-
-def _room_is_available(start: int, room_history: List[Tuple[int, int]],
-                       cooldown: int) -> bool:
-    for prev_start, prev_end in room_history:
-        if start < prev_end + cooldown:
-            return False
-    return True
-
-
-def _find_regular_slot(
-    desired: int,
-    duration: int,
-    occupied: List[Tuple[int, int]],
-    room_history: List[Tuple[int, int]],
-    cooldown: int,
-    windows: List[Tuple[int, int]],
-) -> Optional[Tuple[int, int]]:
-    """
-    Ищет ближайшее допустимое место в обычной смене.
-    Предпочитает минимальное отклонение от целевого времени.
-    """
-    candidates = []
-
-    # Формируем свободные куски каждого рабочего окна.
-    for ws, we in windows:
-        blocked = sorted(
-            [(a, b) for a, b in occupied if _overlap(a, b, ws, we)],
-            key=lambda x: x[0]
-        )
-
-        cursor = ws
-        gaps = []
-        for a, b in blocked:
-            if a > cursor:
-                gaps.append((cursor, min(a, we)))
-            cursor = max(cursor, b)
-        if cursor < we:
-            gaps.append((cursor, we))
-
-        for gs, ge in gaps:
-            if ge - gs < duration:
-                continue
-
-            # Несколько естественных кандидатов: target, начало и конец gap.
-            starts = {
-                max(gs, min(desired, ge - duration)),
-                gs,
-                ge - duration,
-            }
-            for start in starts:
-                end = start + duration
-                if end > ge:
-                    continue
-                if _room_is_available(start, room_history, cooldown):
-                    candidates.append((abs(start - desired), start, end))
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: (x[0], x[1]))
-    _, start, end = candidates[0]
-    return start, end
-
-
-def _find_overtime_slot(
-    desired: int,
-    duration: int,
-    occupied: List[Tuple[int, int]],
-    room_history: List[Tuple[int, int]],
-    cooldown: int,
-    shift_end: int,
-) -> Tuple[int, int]:
-    """
-    Overtime никогда не начинается внутри обеда и не обрывается.
-    По умолчанию задача ставится после последней задачи сотрудника,
-    но не раньше конца смены.
-    """
-    start = max(shift_end, desired)
-    if occupied:
-        start = max(start, max(b for _, b in occupied))
-
-    # Важное практическое правило: если уборка уже не помещается
-    # в обычную смену, она выполняется сразу после последней работы
-    # сотрудника в смене. Периодичность между повторными уборками
-    # здесь намеренно НЕ применяется: это уже переработка.
-    return start, start + duration
-
-
-def _score_candidate(
-    employee: int,
-    preferred_employee: int,
-    start: int,
-    end: int,
-    desired: int,
-    load_minutes: Dict[int, float],
-    target_load: float,
-    zone_penalty: float = 10.0,
-) -> float:
-    new_load = load_minutes[employee] + (end - start)
-    current_load = load_minutes[employee]
-    balance = abs(new_load - target_load)
-    lateness = abs(start - desired)
-    preference = 0.0 if employee == preferred_employee else zone_penalty
-    # Сначала не допускаем накопления задач у одного сотрудника.
-    # Затем учитываем целевую загрузку и близость к нормативному времени.
-    return current_load * 0.75 + balance * 0.25 + lateness * 0.45 + preference
-
-
-def _attach_task_metadata(task: CleaningTask, *, is_overtime: bool,
-                          transit_after: int, priority: bool = False):
-    # Оставляем совместимость со старой моделью CleaningTask.
-    task.is_overtime = bool(is_overtime)
-    task.transit_after_minutes = int(max(0, transit_after))
-    task.priority = bool(priority)
-
-
-def schedule_single_shift(project, employees: Optional[int] = None,
-                          allow_partial_schedule: bool = True):
-    """
-    Генерирует расписание на один день.
-
-    Все требуемые уборки создаются обязательно. Если регулярное окно
-    закончилось, уборка переносится в сверхурочное время.
-    """
-    shift_start, shift_end, windows = _regular_windows(project)
-    base_date = project.start_date
-    if isinstance(base_date, str):
-        # Совместимость со старыми сохранениями.
-        for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
-            try:
-                base_date = datetime.strptime(base_date, fmt).date()
-                break
-            except ValueError:
-                continue
-        else:
-            base_date = datetime.today().date()
-
-    emp_count = _safe_employee_count(project, employees)
-    room_by_key = _room_map(project)
-    preferred = _zone_map(project)
-
-    # Если комната не распределена по зоне, назначаем её на наименее
-    # загруженного сотрудника позже. Она не должна исчезнуть из расписания.
-    active_rooms = [
-        (key, room)
-        for key, room in room_by_key.items()
-        if not getattr(room, "disabled", False)
-    ]
-
-    # Создаём все повторные уборки.
-    jobs = []
-    for (fi, rid), room in active_rooms:
-        frequency = max(
-            1,
-            int(round(
-                sanitarnorm.get_frequency_per_day(room.room_type)
-                * getattr(project, "weather_factor", 1.0)
-            ))
-        )
-        duration = max(
-            1,
-            int(math.ceil(
-                sanitarnorm.get_cleaning_time_minutes(
-                    room.room_type,
-                    room.area_m2,
-                    getattr(project, "weather_factor", 1.0),
-                    getattr(project, "cleaning_type", "поддерживающая"),
-                )
-            ))
-        )
-
-        targets = _build_targets(frequency, windows)
-        for occurrence, target in enumerate(targets):
-            jobs.append({
-                "floor_index": fi,
-                "room_id": rid,
-                "room": room,
-                "duration": duration,
-                "frequency": frequency,
-                "occurrence": occurrence,
-                "target": target,
-                "priority": bool(getattr(room, "priority", False)),
-                "preferred_employee": preferred.get((fi, rid)),
-            })
-
-    # Сначала обязательные/частые/длинные работы. Внутри одного уровня
-    # сохраняем временную шкалу, чтобы повторные уборки не "съезжали".
-    jobs.sort(
-        key=lambda j: (
-            not j["priority"],
-            j["target"],
-            -j["duration"],
-            -j["frequency"],
-        )
-    )
-
-    occupied = {i: [] for i in range(emp_count)}
-    load_minutes = {i: 0.0 for i in range(emp_count)}
-    room_history: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
-    employee_last_room = {i: None for i in range(emp_count)}
-    employee_last_floor = {i: 0 for i in range(emp_count)}
-    employee_transit = {i: 0 for i in range(emp_count)}
-
-    total_cleaning = sum(j["duration"] for j in jobs)
-    target_load = total_cleaning / emp_count if emp_count else total_cleaning
-
-    final_tasks: List[CleaningTask] = []
-    overtime_tasks = []
-
-    for job in jobs:
-        key = (job["floor_index"], job["room_id"])
-        history = room_history.setdefault(key, [])
-        cooldown = _get_cooldown(job["room"].room_type)
-        preferred_emp = job["preferred_employee"]
-        if preferred_emp is None or not (0 <= preferred_emp < emp_count):
-            # Нераспределённая комната: на этом этапе предпочтения нет.
-            preferred_emp = min(load_minutes, key=load_minutes.get)
-
-        candidates = []
-
-        # Зона ответственности является жёстким ограничением: уборка
-        # помещения не передаётся другому сотруднику. Если помещение не
-        # закреплено ни за одной зоной, тогда допускается балансировка.
-        employee_candidates = [preferred_emp] if job["preferred_employee"] is not None else list(range(emp_count))
-
-        # В первую очередь пытаемся поставить работу в обычную смену.
-        for emp in employee_candidates:
-            prev_room = employee_last_room[emp]
-            prev_floor = employee_last_floor[emp]
-            transit = 0
-            if prev_room is not None:
-                transit = _get_transit_minutes(
-                    prev_room.room_type,
-                    prev_floor,
-                    job["floor_index"],
-                )
-
-            # Учитываем переход как часть занятости сотрудника.
-            occupied_with_transit = list(occupied[emp])
-            if occupied_with_transit and prev_room is not None:
-                last_end = max(b for _, b in occupied_with_transit)
-                occupied_with_transit.append((last_end, last_end + transit))
-
-            slot = _find_regular_slot(
-                job["target"],
-                job["duration"],
-                occupied_with_transit,
-                history,
-                cooldown,
-                windows,
-            )
-            if slot is not None:
-                start, end = slot
-                score = _score_candidate(
-                    emp,
-                    preferred_emp,
-                    start,
-                    end,
-                    job["target"],
-                    load_minutes,
-                    target_load,
-                )
-                # Приоритетная работа дополнительно стремится к целевому времени.
-                if job["priority"]:
-                    score -= max(0, 25 - abs(start - job["target"])) * 0.5
-                candidates.append((score, emp, start, end, False, transit))
-
-        if candidates:
-            candidates.sort(key=lambda x: (x[0], x[2], x[1]))
-            _, emp, start, end, is_overtime, transit = candidates[0]
-        else:
-            # Если в обычной смене места нет, работа обязана попасть
-            # в расписание сверх смены.
-            overtime_candidates = []
-            employee_candidates = [preferred_emp] if job["preferred_employee"] is not None else list(range(emp_count))
-            for emp in employee_candidates:
-                start, end = _find_overtime_slot(
-                    job["target"],
-                    job["duration"],
-                    occupied[emp],
-                    history,
-                    cooldown,
-                    shift_end,
-                )
-                overtime_candidates.append(
-                    (
-                        abs(start - max(shift_end, job["target"]))
-                        + abs(
-                            (load_minutes[emp] + (end - start))
-                            - target_load
-                        ),
-                        emp,
-                        start,
-                        end,
-                    )
-                )
-
-            overtime_candidates.sort(key=lambda x: (x[0], x[2], x[1]))
-            _, emp, start, end = overtime_candidates[0]
-            is_overtime = True
-
-            prev_room = employee_last_room[emp]
-            transit = 0
-            if prev_room is not None:
-                transit = _get_transit_minutes(
-                    prev_room.room_type,
-                    employee_last_floor[emp],
-                    job["floor_index"],
-                )
-            overtime_tasks.append((job, emp, start, end))
-
-        # Встраиваем переход перед задачей только если он реально нужен.
-        if occupied[emp]:
-            previous_end = max(b for _, b in occupied[emp])
-            if previous_end < start:
-                transit_needed = _get_transit_minutes(
-                    employee_last_room[emp].room_type
-                    if employee_last_room[emp] is not None else "",
-                    employee_last_floor[emp],
-                    job["floor_index"],
-                )
-                # Если переход не помещается в regular slot, переносим задачу.
-                if not is_overtime and previous_end + transit_needed > start:
-                    # Пытаемся найти ещё один regular slot с учётом перехода.
-                    occupied2 = list(occupied[emp]) + [
-                        (previous_end, previous_end + transit_needed)
-                    ]
-                    alt = _find_regular_slot(
-                        job["target"], job["duration"], occupied2,
-                        history, cooldown, windows
-                    )
-                    if alt is not None:
-                        start, end = alt
-                    else:
-                        start, end = _find_overtime_slot(
-                            job["target"], job["duration"],
-                            occupied[emp], history, cooldown, shift_end
-                        )
-                        is_overtime = True
-
-        # Последний safety-check: задача не должна пересекать обед.
-        if not is_overtime:
-            if any(_overlap(start, end, bs, be)
-                   for bs, be in _break_intervals(project, shift_start, shift_end)):
-                start, end = _find_overtime_slot(
-                    job["target"], job["duration"],
-                    occupied[emp], history, cooldown, shift_end
-                )
-                is_overtime = True
-
-        t_start = _time_to_datetime(base_date, start)
-        t_end = _time_to_datetime(base_date, end)
-
-        task = CleaningTask(
-            room_id=job["room_id"],
-            floor_index=job["floor_index"],
-            start_dt=t_start,
-            end_dt=t_end,
-            employee=emp,
-        )
-        _attach_task_metadata(
-            task,
-            is_overtime=is_overtime,
-            transit_after=transit,
-            priority=job["priority"],
-        )
-        final_tasks.append(task)
-
-        occupied[emp].append((start, end + transit))
-        history.append((start, end))
-        history.sort()
-        load_minutes[emp] += job["duration"]
-        employee_transit[emp] += transit
-        employee_last_room[emp] = job["room"]
-        employee_last_floor[emp] = job["floor_index"]
-
-    # Удаляем старые задачи и сохраняем результат в проекте.
-    final_tasks.sort(key=lambda t: (t.employee, t.start_dt))
-    project.cleaning_tasks = final_tasks
-
-    # Аналитика по сотрудникам.
-    employee_analytics = {}
-    regular_capacity = sum(b - a for a, b in windows)
-    for emp in range(emp_count):
-        regular_clean = sum(
-            (t.end_dt - t.start_dt).total_seconds() / 60
-            for t in final_tasks
-            if t.employee == emp and not getattr(t, "is_overtime", False)
-        )
-        overtime = sum(
-            (t.end_dt - t.start_dt).total_seconds() / 60
-            for t in final_tasks
-            if t.employee == emp and getattr(t, "is_overtime", False)
-        )
-        employee_analytics[emp] = {
-            "cleaning_minutes": round(regular_clean, 1),
-            "overtime_minutes": round(overtime, 1),
-            "transit_minutes": int(employee_transit[emp]),
-            "capacity_minutes": regular_capacity,
-            "utilization_percent": round(
-                min(100.0, regular_clean / regular_capacity * 100)
-                if regular_capacity else 0.0,
-                1,
-            ),
-            "idle_minutes": round(
-                max(0.0, regular_capacity - regular_clean),
-                1,
-            ),
-        }
-
-    unscheduled = []  # В новой модели нормальные задачи не теряются.
-    scheduled_keys = {(t.floor_index, t.room_id) for t in final_tasks}
-
-    # allow_partial_schedule оставлен для обратной совместимости.
-    result = {
-        "tasks": final_tasks,
-        "unscheduled_rooms": 0,
-        "missed_cleanings": 0,
-        "unscheduled_rooms_list": unscheduled,
-        "feasible": True,
-        "employee_analytics": employee_analytics,
-        "overtime_tasks": len(overtime_tasks),
-        "overtime_minutes": sum(
-            j["duration"] for j, _, _, _ in overtime_tasks
-        ),
-        "regular_capacity_minutes": regular_capacity * emp_count,
-        "total_cleaning_minutes": total_cleaning,
-        "scheduled_room_keys": sorted(scheduled_keys),
-    }
-    return result
-
-
-def _break_intervals(project, shift_start: int, shift_end: int):
-    result = []
+def _break_intervals(project, shift_start, shift_end):
+    out = []
     for b_start, b_end in getattr(project, "breaks", []) or []:
         try:
             bs, be = _to_minutes(b_start), _to_minutes(b_end)
         except Exception:
             continue
-        bs = max(bs, shift_start)
-        be = min(be, shift_end)
+        bs, be = max(shift_start, bs), min(shift_end, be)
         if be > bs:
-            result.append((bs, be))
+            out.append((bs, be))
+    return out
+
+
+def _working_minute_to_clock(windows, offset_minutes: int) -> int:
+    """Map cumulative working minutes to an absolute minute-of-day."""
+    remaining = max(0, int(offset_minutes))
+    for ws, we in windows:
+        length = we - ws
+        if remaining <= length:
+            return ws + remaining
+        remaining -= length
+    return windows[-1][1] if windows else 0
+
+
+def _build_release_times(frequency: int, windows: List[Tuple[int, int]]) -> List[int]:
+    if not windows:
+        return []
+    frequency = max(1, int(frequency))
+    total = sum(b - a for a, b in windows)
+    if frequency == 1:
+        return [windows[0][0]]
+    return [_working_minute_to_clock(windows, round(total * i / frequency)) for i in range(frequency)]
+
+
+def _zone_map(project) -> Dict[Tuple[int, int], int]:
+    result: Dict[Tuple[int, int], int] = {}
+    for zone in getattr(project, "zones", []) or []:
+        try:
+            fi = int(getattr(zone, "floor_index", 0))
+            emp = int(getattr(zone, "employee_index", 0))
+        except (TypeError, ValueError):
+            continue
+        for rid in getattr(zone, "room_ids", []) or []:
+            try:
+                result[(fi, int(rid))] = emp
+            except (TypeError, ValueError):
+                continue
+    for key, emp in (getattr(project, "manual_assignments", {}) or {}).items():
+        try:
+            fi, rid = map(int, str(key).split(":", 1))
+            result[(fi, rid)] = int(emp)
+        except Exception:
+            continue
     return result
 
 
-def plan_cleaning_schedule(project):
-    return schedule_single_shift(project, project.employees_count)
+def _room_map(project):
+    return {(fi, room.id): room for fi, floor in enumerate(project.floors) for room in floor.rooms}
+
+
+def _safe_employee_count(project, employees: Optional[int]) -> int:
+    requested = employees if employees is not None else getattr(project, "employees_count", 1)
+    return max(1, int(requested))
+
+
+def _room_center(room):
+    pts = getattr(room, "points", None) or []
+    xy = [(float(p[0]), float(p[1])) for p in pts if isinstance(p, (list, tuple)) and len(p) >= 2]
+    if not xy:
+        return (0.0, 0.0)
+    return (sum(x for x, _ in xy) / len(xy), sum(y for _, y in xy) / len(xy))
+
+
+def _distance(room_a, room_b):
+    if room_a is None or room_b is None:
+        return 0.0
+    a, b = _room_center(room_a), _room_center(room_b)
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _room_for_task(project, task):
+    try:
+        floor = project.floors[int(task.floor_index)]
+    except (IndexError, TypeError, ValueError):
+        return None
+    return next((room for room in floor.rooms if room.id == int(task.room_id)), None)
+
+
+
+
+# Compatibility alias used by older diagnostics/validators.
+_get_room_for_task = _room_for_task
+def _required_transit_between(project, previous, current_room, current_floor):
+    if previous is None:
+        return 0
+    prev_room = _room_for_task(project, previous)
+    return _get_transit_minutes(
+        getattr(prev_room, "room_type", "") if prev_room else "",
+        int(previous.floor_index),
+        int(current_floor),
+    )
+
+
+def _job_duration(project, room) -> int:
+    return max(1, int(math.ceil(sanitarnorm.get_cleaning_time_minutes(
+        room.room_type,
+        room.area_m2,
+        getattr(project, "weather_factor", 1.0),
+        getattr(project, "cleaning_type", "поддерживающая"),
+    ))))
+
+
+def _build_jobs(project, windows):
+    zone_map = _zone_map(project)
+    jobs = []
+    sequence = 0
+    weather = getattr(project, "weather_factor", 1.0)
+    for fi, floor in enumerate(project.floors):
+        for room in floor.rooms:
+            if getattr(room, "disabled", False):
+                continue
+            frequency = _get_effective_freq(room.room_type, weather)
+            releases = _build_release_times(frequency, windows)
+            duration = _job_duration(project, room)
+            for occurrence, release in enumerate(releases):
+                jobs.append({
+                    "floor_index": fi,
+                    "room_id": room.id,
+                    "room": room,
+                    "duration": duration,
+                    "frequency": frequency,
+                    "occurrence": occurrence,
+                    "release": release,
+                    "priority": bool(getattr(room, "priority", False)),
+                    "preferred_employee": zone_map.get((fi, room.id)),
+                    "sequence": sequence,
+                })
+                sequence += 1
+    jobs.sort(key=lambda j: (j["release"], not j["priority"], -j["duration"], j["floor_index"], j["room_id"], j["occurrence"]))
+    return jobs
+
+
+def _advance_past_break(start, duration, windows):
+    for ws, we in windows:
+        if start < ws:
+            start = ws
+        if ws <= start < we:
+            if start + duration <= we:
+                return start
+            continue
+    return None
+
+
+def _next_feasible_start(current, duration, release, windows):
+    candidate = max(int(current), int(release))
+    for ws, we in windows:
+        if candidate < ws:
+            candidate = ws
+        if candidate >= we:
+            continue
+        if candidate + duration <= we:
+            return candidate
+        candidate = we
+    return None
+
+
+def _overtime_start(current, duration, release, shift_end, overtime_limit):
+    start = max(int(current), int(release), int(shift_end))
+    if start + duration <= overtime_limit:
+        return start
+    return None
+
+
+def _choose_next_job(project, remaining, current_minute, previous_task):
+    if not remaining:
+        return None
+    eligible = [j for j in remaining if j["release"] <= current_minute + LOOKAHEAD_MINUTES]
+    pool = eligible if eligible else remaining
+    prev_room = _room_for_task(project, previous_task) if previous_task else None
+
+    def score(job):
+        distance = _distance(prev_room, job["room"]) if prev_room else 0.0
+        wait = max(0, job["release"] - current_minute)
+        lateness = max(0, current_minute - job["release"])
+        priority = -PRIORITY_BONUS if job["priority"] else 0.0
+        return (
+            priority
+            + wait * 1.6
+            + lateness * 3.0
+            + distance * DISTANCE_WEIGHT
+            + job["duration"] * 0.02
+        )
+
+    return min(pool, key=lambda j: (score(j), j["release"], j["sequence"]))
+
+
+def _rough_assignment(jobs, employees, project):
+    """Назначает неназначенные задачи без разрушения существующих зон."""
+    assignment = {i: [] for i in range(employees)}
+    loads = {i: 0.0 for i in range(employees)}
+    last_rooms = {i: None for i in range(employees)}
+
+    for job in jobs:
+        preferred = job.get("preferred_employee")
+        if preferred is not None and 0 <= int(preferred) < employees:
+            emp = int(preferred)
+        else:
+            candidates = range(employees)
+            def cost(emp_idx):
+                dist = _distance(last_rooms[emp_idx], job["room"]) if last_rooms[emp_idx] else 0.0
+                return loads[emp_idx] * LOAD_WEIGHT + dist * DISTANCE_WEIGHT
+            emp = min(candidates, key=cost)
+        assignment[emp].append(job)
+        loads[emp] += job["duration"]
+        last_rooms[emp] = job["room"]
+    return assignment
+
+
+def _schedule_employee_jobs(project, jobs, target_date, windows, shift_end, overtime_limit):
+    remaining = list(jobs)
+    tasks: List[CleaningTask] = []
+    current = windows[0][0] if windows else shift_end
+    previous = None
+    overtime_count = 0
+    unscheduled = []
+
+    while remaining:
+        job = _choose_next_job(project, remaining, current, previous)
+        if job is None:
+            break
+        remaining.remove(job)
+
+        transit = _required_transit_between(project, previous, job["room"], job["floor_index"])
+        ready = current + transit
+        release = job["release"]
+        start = _next_feasible_start(ready, job["duration"], release, windows)
+        is_overtime = False
+        if start is None:
+            start = _overtime_start(ready, job["duration"], release, shift_end, overtime_limit)
+            if start is None:
+                unscheduled.append(job)
+                continue
+            is_overtime = True
+            overtime_count += 1
+
+        end = start + job["duration"]
+        task = CleaningTask(
+            room_id=job["room_id"],
+            floor_index=job["floor_index"],
+            start_dt=_time_to_datetime(target_date, start),
+            end_dt=_time_to_datetime(target_date, end),
+            employee=0,
+            is_overtime=is_overtime,
+            transit_after_minutes=0,
+            priority=job["priority"],
+        )
+        task.transit_before_minutes = int(transit)
+        task.transit_after_minutes = 0
+        tasks.append(task)
+        current = end
+        previous = task
+
+    # metadata transit_after is derived after the order is final.
+    for a, b in zip(tasks, tasks[1:]):
+        req = _required_transit_between(project, a, _room_for_task(project, b), b.floor_index)
+        a.transit_after_minutes = int(req)
+        b.transit_before_minutes = int(req)
+
+    return tasks, unscheduled, overtime_count
+
+
+def _schedule_day(project, target_date, employees, allow_partial_schedule=True):
+    shift_start, shift_end, windows = _regular_windows(project)
+    overtime_limit = _to_minutes(getattr(project, "overtime_limit", "23:00"))
+    overtime_limit = max(shift_end, overtime_limit)
+    jobs = _build_jobs(project, windows)
+    assignments = _rough_assignment(jobs, employees, project)
+
+    employee_tasks = {i: [] for i in range(employees)}
+    unscheduled = []
+    for emp in range(employees):
+        tasks, missing, _ = _schedule_employee_jobs(
+            project, assignments[emp], target_date, windows, shift_end, overtime_limit
+        )
+        for task in tasks:
+            task.employee = emp
+        employee_tasks[emp] = tasks
+        unscheduled.extend(missing)
+
+    final_tasks = sorted([t for group in employee_tasks.values() for t in group], key=lambda t: (t.employee, t.start_dt))
+
+    # Записываем transit metadata заново уже по фактическому графику.
+    for emp in range(employees):
+        ordered = employee_tasks[emp]
+        for idx, task in enumerate(ordered):
+            if idx == 0:
+                task.transit_before_minutes = 0
+            else:
+                prev = ordered[idx - 1]
+                req = _required_transit_between(project, prev, _room_for_task(project, task), task.floor_index)
+                task.transit_before_minutes = int(req)
+                prev.transit_after_minutes = int(req)
+        if ordered:
+            ordered[-1].transit_after_minutes = 0
+
+    regular_capacity = sum(b - a for a, b in windows)
+    analytics = {}
+    for emp in range(employees):
+        tasks = employee_tasks[emp]
+        cleaning = sum((t.end_dt - t.start_dt).total_seconds() / 60 for t in tasks)
+        overtime = 0.0
+        for t in tasks:
+            if getattr(t, "is_overtime", False):
+                overtime += max(0.0, (t.end_dt - _time_to_datetime(target_date, shift_end)).total_seconds() / 60)
+        transit = sum(int(getattr(t, "transit_before_minutes", 0)) for t in tasks)
+        regular_cleaning = max(0.0, cleaning - overtime)
+        analytics[emp] = {
+            "cleaning_minutes": round(cleaning, 1),
+            "overtime_minutes": round(overtime, 1),
+            "transit_minutes": int(transit),
+            "capacity_minutes": regular_capacity,
+            "utilization_percent": round(regular_cleaning / regular_capacity * 100, 1) if regular_capacity else 0.0,
+            "idle_minutes": round(max(0.0, regular_capacity - regular_cleaning), 1),
+        }
+
+    result = {
+        "date": target_date,
+        "tasks": final_tasks,
+        "employees": employees,
+        "shift_start": _time_to_datetime(target_date, shift_start),
+        "shift_end": _time_to_datetime(target_date, shift_end),
+        "breaks": _break_intervals(project, shift_start, shift_end),
+        "active_rooms": len([r for r in project.all_rooms() if not getattr(r, "disabled", False)]),
+        "scheduled_rooms": len({(t.floor_index, t.room_id) for t in final_tasks}),
+        "required_cleanings": len(jobs),
+        "scheduled_cleanings": len(final_tasks),
+        "missed_cleanings": len(unscheduled),
+        "unscheduled_rooms_list": [
+            {
+                "floor_index": j["floor_index"],
+                "room_id": j["room_id"],
+                "room_name": j["room"].name,
+                "cleaning_index": j["occurrence"] + 1,
+                "required_minutes": j["duration"],
+                "room": (j["floor_index"], j["room_id"]),
+                "reason": "Не удалось разместить уборку в смене и разрешённой переработке",
+            }
+            for j in unscheduled
+        ],
+        "cleaning_minutes": round(sum((t.end_dt - t.start_dt).total_seconds() / 60 for t in final_tasks), 1),
+        "transit_minutes": int(sum(int(getattr(t, "transit_before_minutes", 0)) for t in final_tasks)),
+        "available_minutes": regular_capacity * employees,
+        "employee_analytics": analytics,
+        "overtime_tasks": sum(1 for t in final_tasks if getattr(t, "is_overtime", False)),
+        "feasible": len(unscheduled) == 0,
+        "scheduled_room_keys": sorted({(t.floor_index, t.room_id) for t in final_tasks}),
+        "break_start": _time_to_datetime(target_date, result_breaks[0][0]) if (result_breaks := _break_intervals(project, shift_start, shift_end)) else None,
+        "break_end": _time_to_datetime(target_date, result_breaks[0][1]) if result_breaks else None,
+    }
+    return result
+
+
+def schedule_single_shift(project, target_date: Optional[date] = None, employees: Optional[int] = None, allow_partial_schedule: bool = True):
+    target = _normalize_date(target_date if target_date is not None else getattr(project, "start_date", None))
+    emp_count = _safe_employee_count(project, employees)
+    result = _schedule_day(project, target, emp_count, allow_partial_schedule)
+    project.cleaning_tasks = list(result["tasks"])
+    try:
+        from schedule_validator import validate_schedule
+        result["validation"] = validate_schedule(project, schedule_date=target)
+    except Exception as exc:
+        result["validation"] = {"valid": False, "error": str(exc)}
+    result["employee_loads"] = result["employee_analytics"]
+    result["idle_minutes"] = round(sum(v["idle_minutes"] for v in result["employee_analytics"].values()), 1)
+    result["rooms_active"] = result["active_rooms"]
+    result["rooms_scheduled"] = result["scheduled_rooms"]
+    result["total_tasks"] = result["scheduled_cleanings"]
+    result["unscheduled_rooms"] = result["missed_cleanings"]
+    result["total_workload_minutes"] = round(result["cleaning_minutes"] + result["transit_minutes"], 1)
+    result["total_workload_hours"] = round(result["total_workload_minutes"] / 60, 2)
+    result["cleaning_hours"] = result["cleaning_minutes"] / 60.0
+    result["capacity_deficit"] = max(0.0, result["total_workload_minutes"] - result["available_minutes"])
+    result["violations"] = result.get("validation", {})
+    return result
+
+
+def plan_cleaning_schedule(project, fixed_employees: Optional[int] = None, max_days: Optional[int] = None):
+    # Производственный режим KleanPlann — однодневный график.
+    if max_days is not None and int(max_days) != 1:
+        raise ValueError("Production-режим создаёт расписание только на один рабочий день")
+    return schedule_single_shift(project, target_date=getattr(project, "start_date", None), employees=fixed_employees).get("tasks", [])
+
+
+def plan_cleaning_period(project, employees: Optional[int] = None, allow_partial_schedule: bool = True, start_date=None, end_date=None):
+    """Совместимость со старым API: production-сценарий всё равно однодневный."""
+    target = _normalize_date(start_date if start_date is not None else getattr(project, "start_date", None))
+    result = schedule_single_shift(project, target_date=target, employees=employees, allow_partial_schedule=allow_partial_schedule)
+    return {
+        "tasks": result["tasks"],
+        "days": [result],
+        "employees": result["employees"],
+        "period_days": 1,
+        "expected_tasks": result["required_cleanings"],
+        "scheduled_tasks": result["scheduled_cleanings"],
+        "missed_cleanings": result["missed_cleanings"],
+        "feasible": result["feasible"],
+    }
 
 
 def compute_recommended_employees(project):
-    """Рекомендуемое число сотрудников (быстрая нижняя оценка)."""
     from cost_calculator import estimate_required_employees
     return estimate_required_employees(project)["employees"]
+
+
+def _regular_windows_from_shift(shift_start, shift_end, breaks):
+    windows = [(shift_start, shift_end)]
+    for bs, be in breaks:
+        new = []
+        for ws, we in windows:
+            if be <= ws or bs >= we:
+                new.append((ws, we))
+                continue
+            if ws < bs:
+                new.append((ws, bs))
+            if be < we:
+                new.append((be, we))
+        windows = [(a, b) for a, b in new if b > a]
+    return windows
