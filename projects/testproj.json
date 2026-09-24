@@ -759,19 +759,13 @@
   "zones": [
     {
       "id": 0,
-      "name": "Сотрудник 1",
+      "name": "Сотрудник 1 — этаж 1",
       "room_ids": [
-        1,
-        1,
-        3,
         2,
         3,
         0,
-        0,
+        1,
         4,
-        2,
-        4,
-        5,
         5
       ],
       "color": [
@@ -782,6 +776,26 @@
       ],
       "employee_index": 0,
       "floor_index": 0
+    },
+    {
+      "id": 1,
+      "name": "Сотрудник 1 — этаж 2",
+      "room_ids": [
+        1,
+        0,
+        5,
+        2,
+        3,
+        4
+      ],
+      "color": [
+        230,
+        25,
+        75,
+        100
+      ],
+      "employee_index": 0,
+      "floor_index": 1
     }
   ],
   "manual_assignments": {},
@@ -795,8 +809,10 @@
   "overtime_type": "percent",
   "overtime_value": 50.0,
   "overtime_premium_percent": 50.0,
+  "overtime_limit": "23:00",
   "cleaning_type": "поддерживающая",
   "total_area_m2": 266.9677497527106,
+  "schedule_locks": {},
   "calibration_line": null,
   "shifts": [
     {
@@ -817,5 +833,5 @@
   "priority_mode": "balanced",
   "is_dxf_loaded": false,
   "created_date": "2026-08-17T18:30:45.805736",
-  "last_modified": "2026-08-17T20:36:57.292182"
+  "last_modified": "2026-08-26T14:23:53.598130"
 }

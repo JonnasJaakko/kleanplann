@@ -107,8 +107,9 @@ def _draw_floor_plan(project,floor,employee_index=None,dpi=180):
     if image_path:
         try: arr=np.array(Image.open(image_path).convert("RGB"))
         except Exception as exc: raise ReportGenerationError(f"Не удалось прочитать исходный план '{image_path}': {exc}") from exc
-    elif getattr(floor,"image_path",""):
-        raise ReportGenerationError(f"Не найден исходный план этажа '{floor.name}'.\nПуть: {floor.image_path}\nЭкспорт остановлен, чтобы не выпустить неполный документ.")
+    # Подложка плана является необязательной. Если путь отсутствует или файл
+    # недоступен, отчёт всё равно должен строиться по геометрии помещений.
+    # Это особенно важно для проектов, созданных вручную/DXF без растровой подложки.
     if arr is not None:
         sw,sh=arr.shape[1],arr.shape[0]
     else:
@@ -123,6 +124,11 @@ def _draw_floor_plan(project,floor,employee_index=None,dpi=180):
         pts=[p for r in floor.rooms for p in r.points]
         if pts:
             xs=[p[0] for p in pts]; ys=[p[1] for p in pts]; mx=max(10,(max(xs)-min(xs))*.04); my=max(10,(max(ys)-min(ys))*.04); ax.set_xlim(min(xs)-mx,max(xs)+mx); ax.set_ylim(max(ys)+my,min(ys)-my)
+        # Не рисуем фальшивую подложку: поверх геометрии помещений показываем
+        # понятное уведомление, что исходного изображения нет.
+        ax.text(0.5, 0.97, "Исходная подложка не задана — показана геометрия помещений",
+                transform=ax.transAxes, ha="center", va="top", fontsize=7.5,
+                color="#666666", bbox=dict(facecolor="white", edgecolor="#BFBFBF", alpha=.9, pad=2.5))
     for room in floor.rooms:
         z=_zone_for(project,floor.index,room.id); rgb=tuple(z.color[:3]) if z else tuple(room.color[:3]); active=employee_index is None or (z and z.employee_index==employee_index); alpha=.76 if active else .10
         ax.add_patch(mpatches.Polygon(room.points,closed=True,facecolor=[x/255 for x in rgb],alpha=alpha,edgecolor="black",linewidth=.7))
